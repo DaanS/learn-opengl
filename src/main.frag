@@ -73,7 +73,6 @@ vec3 calc_dir_light(dir_light_type light, vec3 normal, vec3 view_dir) {
     vec3 spec_color = spec_strength * light.specular * vec3(texture(material_specular[0], tex_coords));
 
     return ambient_color + diff_color + spec_color;
-    //return 2 * (ambient_color + diff_color + spec_color);
 }
 
 vec3 calc_point_light(point_light_type light, vec3 normal, vec3 view_dir, vec3 frag_pos) {
@@ -92,7 +91,8 @@ vec3 calc_point_light(point_light_type light, vec3 normal, vec3 view_dir, vec3 f
     float dist = length(light.pos - frag_pos);
     float attenuation = 1.0 / (light.constant + light.linear * dist + light.quadratic * dist * dist);
 
-    return attenuation * (ambient_color + diff_color + spec_color);
+    vec3 result = attenuation * (ambient_color + diff_color + spec_color);
+    return vec3(spec.r, spec.g, spec.b) + 0.01 * result;
 }
 
 vec3 calc_spot_light(spot_light_type light, vec3 normal, vec3 view_dir, vec3 frag_pos) {
@@ -118,6 +118,9 @@ vec3 calc_spot_light(spot_light_type light, vec3 normal, vec3 view_dir, vec3 fra
 }
 
 void main() {
+    vec4 tex_color = texture(material_diffuse[0], tex_coords);
+    if (tex_color.a < 0.5) discard;
+
     vec3 normal = normalize(vert_normal);
     vec3 view_dir = normalize(view_pos - frag_pos);
 
@@ -127,7 +130,7 @@ void main() {
         result += calc_point_light(point_lights[i], normal, view_dir, frag_pos);
     }
 
-    result += calc_spot_light(spot_light, normal, view_dir, frag_pos);
+    result += 0.01 * calc_spot_light(spot_light, normal, view_dir, frag_pos);
 
     frag_color = vec4(result, 1.0);
 }

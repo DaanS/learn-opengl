@@ -21,7 +21,7 @@
 static unsigned int width = 800;
 static unsigned int height = 600;
 
-glm::vec3 camera_pos(0.0f, 0.0f, 3.0f);
+glm::vec3 camera_pos(0.0f, 0.0f, 0.0f);
 glm::vec3 camera_front(0.0f, 0.0f, -1.0f);
 glm::vec3 camera_up(0.0f, 1.0f, 0.0f);
 float fov = 45.0f;
@@ -29,6 +29,11 @@ float fov = 45.0f;
 glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
 
 #define ENABLE_MOUSE 1
+
+std::ostream& operator<<(std::ostream& os, glm::vec3 v) {
+    os << "(" << v.x << ", " << v.y << ", " << v.z << ")";
+    return os;
+}
 
 struct sdl_window {
     SDL_Window * window;
@@ -100,7 +105,7 @@ struct sdl_window {
         float cur_time = get_time();
         float delta_time = cur_time - prev_time;
         prev_time = cur_time;
-        float camera_speed = 2.5f * delta_time;
+        float camera_speed = 50.0f * delta_time;
 
         glPolygonMode(GL_FRONT_AND_BACK, key_state[SDL_SCANCODE_F] ? GL_LINE : GL_FILL);
 
@@ -129,6 +134,12 @@ struct sdl_window {
             std::sin(glm::radians(pitch)),
             -std::cos(glm::radians(pitch)) * std::cos(glm::radians(yaw))
         ));
+
+        camera_up = glm::normalize(glm::vec3(
+            -std::sin(glm::radians(pitch)) * std::sin(glm::radians(yaw)),
+            std::cos(glm::radians(pitch)),
+            std::sin(glm::radians(pitch)) * std::cos(glm::radians(yaw))
+        ));
     }
 #endif
 
@@ -153,84 +164,87 @@ int main() {
         return -1;
     }
 
-    std::vector<vertex> vertices{
+    float vertices[] = {
         // positions          // normals           // texture coords
-        {{-0.5f, -0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f},  {0.0f, 0.0f}},
-        {{ 0.5f, -0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f},  {1.0f, 0.0f}},
-        {{ 0.5f,  0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f},  {1.0f, 1.0f}},
-        {{ 0.5f,  0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f},  {1.0f, 1.0f}},
-        {{-0.5f,  0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f},  {0.0f, 1.0f}},
-        {{-0.5f, -0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f},  {0.0f, 0.0f}},
+        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
 
-        {{-0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f},  {0.0f, 0.0f}},
-        {{ 0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f},  {1.0f, 0.0f}},
-        {{ 0.5f,  0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f},  {1.0f, 1.0f}},
-        {{ 0.5f,  0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f},  {1.0f, 1.0f}},
-        {{-0.5f,  0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f},  {0.0f, 1.0f}},
-        {{-0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f},  {0.0f, 0.0f}},
+        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 0.0f,
 
-        {{-0.5f,  0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f},  {1.0f, 0.0f}},
-        {{-0.5f,  0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f},  {1.0f, 1.0f}},
-        {{-0.5f, -0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f},  {0.0f, 1.0f}},
-        {{-0.5f, -0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f},  {0.0f, 1.0f}},
-        {{-0.5f, -0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f},  {0.0f, 0.0f}},
-        {{-0.5f,  0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f},  {1.0f, 0.0f}},
+        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
 
-        {{ 0.5f,  0.5f,  0.5f}, { 1.0f,  0.0f,  0.0f},  {1.0f, 0.0f}},
-        {{ 0.5f,  0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f},  {1.0f, 1.0f}},
-        {{ 0.5f, -0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f},  {0.0f, 1.0f}},
-        {{ 0.5f, -0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f},  {0.0f, 1.0f}},
-        {{ 0.5f, -0.5f,  0.5f}, { 1.0f,  0.0f,  0.0f},  {0.0f, 0.0f}},
-        {{ 0.5f,  0.5f,  0.5f}, { 1.0f,  0.0f,  0.0f},  {1.0f, 0.0f}},
+         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
 
-        {{-0.5f, -0.5f, -0.5f}, { 0.0f, -1.0f,  0.0f},  {0.0f, 1.0f}},
-        {{ 0.5f, -0.5f, -0.5f}, { 0.0f, -1.0f,  0.0f},  {1.0f, 1.0f}},
-        {{ 0.5f, -0.5f,  0.5f}, { 0.0f, -1.0f,  0.0f},  {1.0f, 0.0f}},
-        {{ 0.5f, -0.5f,  0.5f}, { 0.0f, -1.0f,  0.0f},  {1.0f, 0.0f}},
-        {{-0.5f, -0.5f,  0.5f}, { 0.0f, -1.0f,  0.0f},  {0.0f, 0.0f}},
-        {{-0.5f, -0.5f, -0.5f}, { 0.0f, -1.0f,  0.0f},  {0.0f, 1.0f}},
+        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
 
-        {{-0.5f,  0.5f, -0.5f}, { 0.0f,  1.0f,  0.0f},  {0.0f, 1.0f}},
-        {{ 0.5f,  0.5f, -0.5f}, { 0.0f,  1.0f,  0.0f},  {1.0f, 1.0f}},
-        {{ 0.5f,  0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f},  {1.0f, 0.0f}},
-        {{ 0.5f,  0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f},  {1.0f, 0.0f}},
-        {{-0.5f,  0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f},  {0.0f, 0.0f}},
-        {{-0.5f,  0.5f, -0.5f}, { 0.0f,  1.0f,  0.0f},  {0.0f, 1.0f}}
+        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f
     };
 
     glm::vec3 point_light_pos[] = {
-        glm::vec3( 0.7f,  0.2f,  2.0f),
-        glm::vec3( 2.3f, -3.3f, -4.0f),
-        glm::vec3(-4.0f,  2.0f, -12.0f),
-        glm::vec3( 0.0f,  0.0f, -3.0f)
+        glm::vec3(-124.0f, 25.0f, -44.0f),
+        glm::vec3(-124.0f, 25.0f,  29.0f),
+        glm::vec3(  97.5f, 25.0f,  29.0f),
+        glm::vec3(  97.5f, 25.0f, -44.0f)
     };
 
     constexpr size_t POINT_LIGHT_COUNT = 4;
 
     shader_program program({{GL_VERTEX_SHADER, "src/main.vert"}, {GL_FRAGMENT_SHADER, "src/main.frag"}});
-    //shader_program program({{GL_VERTEX_SHADER, "src/suit.vert"}, {GL_FRAGMENT_SHADER, "src/suit.frag"}});
     shader_program lamp({{GL_VERTEX_SHADER, "src/main.vert"}, {GL_FRAGMENT_SHADER, "src/lamp.frag"}});
 
-    model suit{"res/nanosuit/nanosuit.obj"};
-    std::vector<GLuint> indices;
-    for (size_t i = 0; i < 36; ++i) indices.push_back(i);
-    std::vector<texture> textures;
-    textures.push_back({"res/container2.png"});
-    textures.push_back({"res/container2_specular.png", texture_type::specular});
-    mesh container{std::move(vertices), std::move(indices), std::move(textures)};
+    model sponza{"res/sponza/sponza.obj"};
 
     glEnable(GL_DEPTH_TEST);
 
-    std::cout << GL_TEXTURE0 << std::endl;
+    GLuint lamp_vao;
+    glGenVertexArrays(1, &lamp_vao);
+    glBindVertexArray(lamp_vao);
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *) 0);
+    glEnableVertexAttribArray(0);
 
     while (window.running) {
         window.handle_events();
 
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
-        glm::mat4 projection = glm::perspective(glm::radians(fov), (float) width / (float) height, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(fov), (float) width / (float) height, 0.1f, 1000.0f);
 
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
@@ -243,20 +257,22 @@ int main() {
         program.set_uniform("view_pos", camera_pos);
         program.set_uniform("shininess", 32.0f);
 
-        program.set_uniform("dir_light.dir", glm::vec3(-0.2f, -1.0f, -0.3f));
-        program.set_uniform("dir_light.ambient", glm::vec3(0.05f, 0.05f, 0.05f));
-        program.set_uniform("dir_light.diffuse", glm::vec3(0.4f, 0.4f, 0.4f));
-        program.set_uniform("dir_light.specular", glm::vec3(0.5f, 0.5f, 0.5f));
+        glm::vec3 dir_light_color{1.0f, 1.0f, 1.0f};
+        program.set_uniform("dir_light.dir", glm::vec3(-0.2f, -1.0f, 0.1f));
+        program.set_uniform("dir_light.ambient", 0.05f * dir_light_color);
+        program.set_uniform("dir_light.diffuse", 0.0f * dir_light_color);
+        program.set_uniform("dir_light.specular", 0.0f * dir_light_color);
 
+        glm::vec3 point_light_color{1.0f, 0.5f, 0.0f};
         for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
             std::string name = "point_lights[" + std::to_string(i) + "]";
             program.set_uniform(name + ".pos", point_light_pos[i]);
-            program.set_uniform(name + ".ambient", glm::vec3(0.05f, 0.05f, 0.05f));
-            program.set_uniform(name + ".diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
-            program.set_uniform(name + ".specular", glm::vec3(1.0f, 1.0f, 1.0f));
+            program.set_uniform(name + ".ambient", 0.05f * point_light_color);
+            program.set_uniform(name + ".diffuse", 0.8f * point_light_color);
+            program.set_uniform(name + ".specular", 1.0f * point_light_color);
             program.set_uniform(name + ".constant", 1.0f);
-            program.set_uniform(name + ".linear", 0.09f);
-            program.set_uniform(name + ".quadratic", 0.032f);
+            program.set_uniform(name + ".linear", 0.014f);
+            program.set_uniform(name + ".quadratic", 0.0007f);
         }
 
         program.set_uniform("spot_light.pos", camera_pos);
@@ -265,13 +281,27 @@ int main() {
         program.set_uniform("spot_light.diffuse", glm::vec3(1.0f, 1.0f, 1.0f));
         program.set_uniform("spot_light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
         program.set_uniform("spot_light.constant", 1.0f);
-        program.set_uniform("spot_light.linear", 0.09f);
-        program.set_uniform("spot_light.quadratic", 0.032f);
+        program.set_uniform("spot_light.linear", 0.045f);
+        program.set_uniform("spot_light.quadratic", 0.0075f);
         program.set_uniform("spot_light.cutoff", glm::cos(glm::radians(12.5f)));
         program.set_uniform("spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
 
-        suit.draw(program);
-        container.draw(program);
+        sponza.draw(program);
+
+        for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, point_light_pos[i]);
+            model = glm::scale(model, glm::vec3(0.2f));
+
+            lamp.use();
+            lamp.set_uniform("model", model);
+            lamp.set_uniform("view", view);
+            lamp.set_uniform("projection", projection);
+            lamp.set_uniform("color", point_light_color);
+
+            glBindVertexArray(lamp_vao);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
 
         window.swap_buffer();
     }

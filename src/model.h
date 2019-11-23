@@ -87,6 +87,7 @@ struct mesh {
 struct model {
     std::vector<mesh> meshes;
     std::string directory;
+    std::unordered_map<std::string, texture> loaded_textures;
 
     model(char const * path) {
         load_model(path);
@@ -122,6 +123,7 @@ struct model {
         std::vector<GLuint> indices;
         std::vector<texture> textures;
 
+        // load vertices
         for (size_t i = 0; i < ai_mesh->mNumVertices; ++i) {
             vertices.push_back({
                 glm::vec3(ai_mesh->mVertices[i].x, ai_mesh->mVertices[i].y, ai_mesh->mVertices[i].z),
@@ -132,12 +134,14 @@ struct model {
             });
         }
 
+        // load indices
         for (size_t i = 0; i < ai_mesh->mNumFaces; ++i) {
             for (size_t j = 0; j < ai_mesh->mFaces[i].mNumIndices; ++j) {
                 indices.push_back(ai_mesh->mFaces[i].mIndices[j]);
             }
         }
 
+        // load textures
         if (ai_mesh->mMaterialIndex >= 0) {
             aiMaterial const * material = scene->mMaterials[ai_mesh->mMaterialIndex];
             std::vector<texture> diffuse_maps = load_material_textures(material, aiTextureType_DIFFUSE, texture_type::diffuse);
@@ -154,9 +158,22 @@ struct model {
         std::vector<texture> textures;
 
         for (size_t i = 0; i < material->GetTextureCount(ai_type); ++i) {
+            // get the path from assimp
             aiString str;
             material->GetTexture(ai_type, i, &str);
-            textures.push_back(texture{directory + str.C_Str(), type});
+
+            // try to fix paths (why didn't anyone ever standardize this?)
+            std::string tex_path{directory + str.C_Str()};
+            std::replace(tex_path.begin(), tex_path.end(), '\\', '/');
+
+            auto found = loaded_textures.find(tex_path);
+            if (found != loaded_textures.end()) { 
+                textures.push_back(found->second);
+            } else {
+                texture tex{tex_path, type};
+                textures.push_back(tex);
+                loaded_textures.emplace(std::make_pair(tex_path, tex));
+            }
         }
 
         return textures;
