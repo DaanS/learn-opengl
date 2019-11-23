@@ -1,0 +1,12 @@
+"let g:ale_linters = { 'cpp': ['clang', 'clangcheck'] }
+let g:ale_c_build_dir_names = ['build', 'build/debug']
+"let g:ale_c_parse_compile_commands = 1
+let g:ale_linters = { 'cpp': ['clang'] }
+let g:ale_cpp_clang_executable = 'clang++-9'
+let g:ale_cpp_clang_options = '-std=c++17 -Wall -pedantic -I/usr/include/SDL2'
+"let g:ale_cpp_clang_options = ''
+let g:ale_cpp_clangcheck_executable = 'clang-check-9'
+
+autocmd BufNewFile,BufRead *.h,*.hpp let g:ale_c_parse_compile_commands = 0
+
+nnoremap <F10> :wa<CR>:!make -C build/debug --no-print-directory && echo '' && build/debug/learn<CR>
