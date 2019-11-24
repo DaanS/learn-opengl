@@ -107,7 +107,7 @@ struct shader_program {
             return;
         }
 
-        if constexpr (std::is_same_v<T, int>) {
+        if constexpr (std::is_same_v<T, int> || std::is_same_v<T, bool>) {
             glUniform1i(uniform, t);
         } else if constexpr (std::is_same_v<T, size_t>) {
             glUniform1ui(uniform, t);

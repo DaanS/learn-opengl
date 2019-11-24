@@ -18,8 +18,8 @@
 #include "model.h"
 #include "texture.h"
 
-static unsigned int width = 800;
-static unsigned int height = 600;
+static unsigned int width = 1200;
+static unsigned int height = 900;
 
 glm::vec3 camera_pos(0.0f, 0.0f, 0.0f);
 glm::vec3 camera_front(0.0f, 0.0f, -1.0f);
@@ -255,7 +255,6 @@ int main() {
         program.set_uniform("view", view);
         program.set_uniform("projection", projection);
         program.set_uniform("view_pos", camera_pos);
-        program.set_uniform("shininess", 32.0f);
 
         glm::vec3 dir_light_color{1.0f, 1.0f, 1.0f};
         program.set_uniform("dir_light.dir", glm::vec3(-0.2f, -1.0f, 0.1f));

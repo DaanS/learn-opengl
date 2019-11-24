@@ -78,6 +78,7 @@ newmtl bricks
 	map_Ka textures\spnza_bricks_a_diff.png
 	map_Kd textures\spnza_bricks_a_diff.png
 	map_bump textures\spnza_bricks_a_bump.png
+	map_Kn textures\spnza_bricks_a_normal.png
 
 newmtl arch
 	Ns 40.0000
