@@ -28,8 +28,6 @@ float fov = 45.0f;
 
 glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
 
-#define ENABLE_MOUSE 1
-
 std::ostream& operator<<(std::ostream& os, glm::vec3 v) {
     os << "(" << v.x << ", " << v.y << ", " << v.z << ")";
     return os;
@@ -87,11 +85,9 @@ struct sdl_window {
                         default: break;
                     }
                     break;
-#ifdef ENABLE_MOUSE
                 case SDL_MOUSEMOTION:
                     handle_mouse(event.motion);
                     break;
-#endif
                 case SDL_MOUSEWHEEL:
                     handle_scroll(event.wheel);
                     break;
@@ -117,7 +113,6 @@ struct sdl_window {
         if (key_state[SDL_SCANCODE_LCTRL]) camera_pos -= camera_speed * camera_up;
     }
 
-#ifdef ENABLE_MOUSE
     void handle_mouse(SDL_MouseMotionEvent e) {
         static float sensitivity = 0.05f;
         static float yaw = 0.0f;
@@ -141,7 +136,6 @@ struct sdl_window {
             std::sin(glm::radians(pitch)) * std::cos(glm::radians(yaw))
         ));
     }
-#endif
 
     void handle_scroll(SDL_MouseWheelEvent e) {
         fov -= e.y;

@@ -39,7 +39,7 @@ struct spot_light_type {
 struct material_type {
     float shininess;
     float refraction;
-    float opacity;
+    float opacity_value;
 
     vec3 color_ambient;
     vec3 color_diffuse;
@@ -52,12 +52,14 @@ struct material_type {
     sampler2D emissive;
     sampler2D bump;
     sampler2D normal;
+    sampler2D opacity;
 
     bool has_diffuse_map;
     bool has_specular_map;
     bool has_emissive_map;
     bool has_bump_map;
     bool has_normal_map;
+    bool has_opacity_map;
 };
 
 in vec3 frag_pos;
@@ -94,8 +96,8 @@ vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir) 
     float diff_strength = max(dot(normal, light_dir), 0.0);
     vec3 diff_color = diff_strength * diffuse * vec3(texture(material.diffuse, frag_tex_coords));
 
-    vec3 reflect_dir = reflect(-light_dir, normal);
-    float spec_strength = pow(max(dot(view_dir, reflect_dir), 0.0), material.shininess);
+    vec3 halfway_dir = normalize(light_dir + view_dir);
+    float spec_strength = pow(max(dot(normal, halfway_dir), 0.0), 2 * material.shininess);
     vec3 spec_color;
     if (material.has_specular_map) {
         spec_color = spec_strength * specular * vec3(texture(material.specular, frag_tex_coords));
@@ -103,7 +105,12 @@ vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir) 
         spec_color = spec_strength * specular * material.color_specular;
     }
 
-    return ambient_color + diff_color + spec_color;
+    vec3 em_color = vec3(0.0);
+    if (material.has_emissive_map) {
+        em_color = vec3(texture(material.emissive, frag_tex_coords));
+    }
+
+    return max(em_color, ambient_color + diff_color + spec_color);
 }
 
 vec3 calc_dir_light(dir_light_type light) {
@@ -139,8 +146,13 @@ vec3 calc_spot_light(spot_light_type light) {
 }
 
 void main() {
-    vec4 tex_color = texture(material.diffuse, frag_tex_coords);
-    if (tex_color.a < 0.5) discard;
+    if (material.has_opacity_map) {
+        vec4 tex_color = texture(material.opacity, frag_tex_coords);
+        if (tex_color.r < 0.5) discard;
+    } else {
+        vec4 tex_color = texture(material.diffuse, frag_tex_coords);
+        if (tex_color.a < 0.5) discard;
+    }
 
     vec3 result = calc_dir_light(dir_light);
 

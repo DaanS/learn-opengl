@@ -45,7 +45,7 @@ struct material {
 
     float shininess;
     float refraction; // not yet used
-    float opacity; // not yet used
+    float opacity_value; // not yet used
 
     glm::vec3 color_ambient; // not yet used
     glm::vec3 color_diffuse; // not yet used
@@ -58,6 +58,7 @@ struct material {
     std::shared_ptr<texture> emissive; // not yet used
     std::shared_ptr<texture> bump;
     std::shared_ptr<texture> normal; // not yet used
+    std::shared_ptr<texture> opacity;
 
     static std::unordered_map<std::string, std::shared_ptr<texture>> loaded_textures;
 
@@ -66,7 +67,7 @@ struct material {
 
         shininess = ai_get<float, float>(ai_material, AI_MATKEY_SHININESS);
         refraction = ai_get<float, float>(ai_material, AI_MATKEY_REFRACTI);
-        opacity = ai_get<float, float>(ai_material, AI_MATKEY_OPACITY);
+        opacity_value = ai_get<float, float>(ai_material, AI_MATKEY_OPACITY);
 
         color_ambient = ai_get<aiColor3D, glm::vec3>(ai_material, AI_MATKEY_COLOR_AMBIENT);
         color_diffuse = ai_get<aiColor3D, glm::vec3>(ai_material, AI_MATKEY_COLOR_DIFFUSE);
@@ -79,6 +80,7 @@ struct material {
         emissive = load_texture(ai_material, aiTextureType_EMISSIVE, tex_path_base);
         bump = load_texture(ai_material, aiTextureType_HEIGHT, tex_path_base);
         normal = load_texture(ai_material, aiTextureType_NORMALS, tex_path_base);
+        opacity = load_texture(ai_material, aiTextureType_OPACITY, tex_path_base);
     }
 
     static std::shared_ptr<texture> load_texture(aiMaterial const * ai_material, aiTextureType ai_type, std::string tex_path_base) {
@@ -152,41 +154,26 @@ struct mesh {
         glBindVertexArray(0);
     }
 
+    void activate_map(std::string name, std::shared_ptr<texture> tex, int unit, shader_program const & program) const {
+        program.set_uniform("material.has_" + name + "_map", static_cast<bool>(tex));
+        if (tex) {
+            glActiveTexture(GL_TEXTURE0 + unit);
+            glBindTexture(GL_TEXTURE_2D, tex->id);
+            program.set_uniform("material." + name, unit);
+        }
+    }
+
     void draw(shader_program const & program) const {
         program.set_uniform("material.color_diffuse", mat.color_diffuse);
-        program.set_uniform("material.has_diffuse_map", false);
-        if (mat.diffuse) {
-            glActiveTexture(GL_TEXTURE0);
-            program.set_uniform("material.diffuse", 0);
-            program.set_uniform("material.has_diffuse_map", true);
-            glBindTexture(GL_TEXTURE_2D, mat.diffuse->id);
-        }
-
-        program.set_uniform("material.shininess", mat.shininess);
         program.set_uniform("material.color_specular", mat.color_specular);
-        program.set_uniform("material.has_specular_map", false);
-        if (mat.specular) {
-            glActiveTexture(GL_TEXTURE1);
-            program.set_uniform("material.specular", 1);
-            program.set_uniform("material.has_specular_map", true);
-            glBindTexture(GL_TEXTURE_2D, mat.specular->id);
-        }
+        program.set_uniform("material.shininess", mat.shininess);
 
-        program.set_uniform("material.has_bump_map", false);
-        if (mat.bump) {
-            glActiveTexture(GL_TEXTURE3);
-            program.set_uniform("material.bump", 3);
-            program.set_uniform("material.has_bump_map", true);
-            glBindTexture(GL_TEXTURE_2D, mat.bump->id);
-        }
-
-        program.set_uniform("material.has_normal_map", false);
-        if (mat.normal) {
-            glActiveTexture(GL_TEXTURE4);
-            program.set_uniform("material.normal", 4);
-            program.set_uniform("material.has_normal_map", true);
-            glBindTexture(GL_TEXTURE_2D, mat.normal->id);
-        }
+        activate_map("diffuse", mat.diffuse, 0, program);
+        activate_map("specular", mat.specular, 1, program);
+        activate_map("emissive", mat.emissive, 2, program);
+        activate_map("bump", mat.bump, 3, program);
+        activate_map("normal", mat.normal, 4, program);
+        activate_map("opacity", mat.opacity, 5, program);
 
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
@@ -207,7 +194,7 @@ struct model {
 
     void load_model(std::string const path) {
         Assimp::Importer import;
-        aiScene const * scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals | aiProcess_FixInfacingNormals |
+        aiScene const * scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals |
         aiProcess_JoinIdenticalVertices | aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData | aiProcess_OptimizeGraph);
 
         if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
@@ -269,7 +256,7 @@ struct model {
         return m;
     }
 
-    void draw(shader_program const& program) {
+    void draw(shader_program const& program) const {
         for (auto& mesh : meshes) mesh.draw(program);
     }
 };
