@@ -18,11 +18,11 @@
 #include "model.h"
 #include "texture.h"
 
-static unsigned int width = 1200;
+static unsigned int width = 1600;
 static unsigned int height = 900;
 
-glm::vec3 camera_pos(0.0f, 0.0f, 0.0f);
-glm::vec3 camera_front(0.0f, 0.0f, -1.0f);
+glm::vec3 camera_pos(0.0f, 25.0f, 0.0f);
+glm::vec3 camera_front(1.0f, 0.0f, 0.0f);
 glm::vec3 camera_up(0.0f, 1.0f, 0.0f);
 float fov = 45.0f;
 
@@ -54,6 +54,7 @@ struct sdl_window {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
         context = SDL_GL_CreateContext(window);
 
@@ -115,7 +116,7 @@ struct sdl_window {
 
     void handle_mouse(SDL_MouseMotionEvent e) {
         static float sensitivity = 0.05f;
-        static float yaw = 0.0f;
+        static float yaw = 90.0f;
         static float pitch = 0.0f;
 
         yaw += sensitivity * e.xrel;
@@ -210,32 +211,93 @@ int main() {
         glm::vec3(  97.5f, 25.0f, -44.0f)
     };
 
+    float post_vertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+        // positions   // texCoords
+        -1.0f,  1.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+
+        -1.0f,  1.0f,  0.0f, 1.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f, 1.0f
+    };
+
     constexpr size_t POINT_LIGHT_COUNT = 4;
 
     shader_program program({{GL_VERTEX_SHADER, "src/main.vert"}, {GL_FRAGMENT_SHADER, "src/main.frag"}});
-    shader_program lamp({{GL_VERTEX_SHADER, "src/main.vert"}, {GL_FRAGMENT_SHADER, "src/lamp.frag"}});
+    shader_program lamp({{GL_VERTEX_SHADER, "src/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/lamp.frag"}});
+    shader_program post({{GL_VERTEX_SHADER, "src/post.vert"}, {GL_FRAGMENT_SHADER, "src/post.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
+    model nanosuit{"res/nanosuit/nanosuit.obj"};
 
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_STENCIL_TEST);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_CULL_FACE);
 
     GLuint lamp_vao;
     glGenVertexArrays(1, &lamp_vao);
     glBindVertexArray(lamp_vao);
 
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    GLuint lamp_vbo;
+    glGenBuffers(1, &lamp_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, lamp_vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *) 0);
     glEnableVertexAttribArray(0);
 
+    GLuint post_vao;
+    glGenVertexArrays(1, &post_vao);
+    glBindVertexArray(post_vao);
+
+    GLuint post_vbo;
+    glGenBuffers(1, &post_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, post_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(post_vertices), post_vertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *) 0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *) (2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    GLuint framebuffer;
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+    GLuint tex_color_buf;
+    glGenTextures(1, &tex_color_buf);
+    glBindTexture(GL_TEXTURE_2D, tex_color_buf);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_color_buf, 0);
+
+    GLuint rbo;
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     while (window.running) {
         window.handle_events();
 
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
         glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glStencilMask(0xFF);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glStencilMask(0x00);
 
         glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
         glm::mat4 projection = glm::perspective(glm::radians(fov), (float) width / (float) height, 0.1f, 1000.0f);
@@ -279,7 +341,33 @@ int main() {
         program.set_uniform("spot_light.cutoff", glm::cos(glm::radians(12.5f)));
         program.set_uniform("spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
 
+        program.set_uniform("normalize_normal", false);
         sponza.draw(program);
+
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilMask(0xFF);
+        glDisable(GL_CULL_FACE);
+
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(120.0f, -1.75f, 20.0f));
+        model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
+        program.set_uniform("model", model);
+        program.set_uniform("normalize_normal", true);
+        nanosuit.draw(program);
+
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glStencilMask(0x00);
+        glDisable(GL_DEPTH_TEST);
+
+        lamp.use();
+        lamp.set_uniform("model", model);
+        lamp.set_uniform("view", view);
+        lamp.set_uniform("projection", projection);
+        lamp.set_uniform("color", point_light_color);
+        nanosuit.draw(lamp);
+
+        glEnable(GL_DEPTH_TEST);
 
         for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
             glm::mat4 model = glm::mat4(1.0f);
@@ -295,6 +383,19 @@ int main() {
             glBindVertexArray(lamp_vao);
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
+        glEnable(GL_CULL_FACE);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        post.use();
+        post.set_uniform("width", static_cast<float>(width));
+        post.set_uniform("height", static_cast<float>(height));
+        glBindVertexArray(post_vao);
+        glDisable(GL_DEPTH_TEST);
+        glBindTexture(GL_TEXTURE_2D, tex_color_buf);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glEnable(GL_DEPTH_TEST);
 
         window.swap_buffer();
     }

@@ -67,7 +67,7 @@ in vec3 frag_normal;
 in vec2 frag_tex_coords;
 in mat3 tbn;
 
-in vec3 deb_tan;
+in vec3 deb;
 
 out vec4 frag_color;
 
@@ -80,15 +80,20 @@ uniform spot_light_type spot_light;
 
 uniform material_type material;
 
+uniform bool normalize_normal;
+
 vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir) {
     vec3 normal;
     if (material.has_normal_map) {
         normal = vec3(texture(material.normal, frag_tex_coords));
+        if (normalize_normal) normal = normalize(normal);
         normal = normalize(normal * 2.0 - 1.0);
         normal = normalize(tbn * normal);
     } else {
         normal = normalize(frag_normal);
     }
+    //return normal * 0.5 + 0.5;
+
     vec3 view_dir = normalize(view_pos - frag_pos);
 
     vec3 ambient_color = ambient * vec3(texture(material.diffuse, frag_tex_coords));
@@ -148,19 +153,17 @@ vec3 calc_spot_light(spot_light_type light) {
 void main() {
     if (material.has_opacity_map) {
         vec4 tex_color = texture(material.opacity, frag_tex_coords);
-        if (tex_color.r < 0.5) discard;
+        if (tex_color.r < 0.1) discard;
     } else {
         vec4 tex_color = texture(material.diffuse, frag_tex_coords);
-        if (tex_color.a < 0.5) discard;
+        //if (tex_color.a < 0.1) discard;
     }
 
     vec3 result = calc_dir_light(dir_light);
-
-    for (int i  = 0; i < POINT_LIGHT_COUNT; ++i) {
-        result += calc_point_light(point_lights[i]);
-    }
-
+    for (int i  = 0; i < POINT_LIGHT_COUNT; ++i) result += calc_point_light(point_lights[i]);
     result += calc_spot_light(spot_light);
 
     frag_color = vec4(result, 1.0);
+
+    //frag_color = vec4(deb, 1.0);
 }

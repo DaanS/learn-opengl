@@ -15,6 +15,8 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
+out vec3 deb;
+
 void main() {
     gl_Position = projection * view * model * vec4(pos, 1.0);
     frag_pos = vec3(model * vec4(pos, 1.0));
@@ -25,7 +27,10 @@ void main() {
     vec3 b = normalize(vec3(model * vec4(bitangent, 0.0)));
     vec3 n = normalize(vec3(model * vec4(normal, 0.0)));
 
-    if (dot(cross(t, b), n) >= 0) b *= 1;
+    float flip = 1.0;
+    if (dot(cross(t, b), n) <= 0) flip = -1.0;
+    t = normalize(t - dot(t, n) * n);
+    b = cross(n, t) * flip;
 
     tbn = mat3(t, b, n);
 }
