@@ -80,13 +80,10 @@ uniform spot_light_type spot_light;
 
 uniform material_type material;
 
-uniform bool normalize_normal;
-
 vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir) {
     vec3 normal;
     if (material.has_normal_map) {
         normal = vec3(texture(material.normal, frag_tex_coords));
-        if (normalize_normal) normal = normalize(normal);
         normal = normalize(normal * 2.0 - 1.0);
         normal = normalize(tbn * normal);
     } else {

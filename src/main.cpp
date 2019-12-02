@@ -18,8 +18,8 @@
 #include "model.h"
 #include "texture.h"
 
-static unsigned int width = 1600;
-static unsigned int height = 900;
+static unsigned int width = 1920;
+static unsigned int height = 1080;
 
 glm::vec3 camera_pos(0.0f, 25.0f, 0.0f);
 glm::vec3 camera_front(1.0f, 0.0f, 0.0f);
@@ -44,7 +44,7 @@ struct sdl_window {
             std::exit(1);
         }
 
-        window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_OPENGL);
+        window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
 
         if (!window) {
             std::cerr << "ERROR creating SDL window: " << SDL_GetError() << std::endl;
@@ -340,8 +340,6 @@ int main() {
         program.set_uniform("spot_light.quadratic", 0.0075f);
         program.set_uniform("spot_light.cutoff", glm::cos(glm::radians(12.5f)));
         program.set_uniform("spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
-
-        program.set_uniform("normalize_normal", false);
         sponza.draw(program);
 
         glStencilFunc(GL_ALWAYS, 1, 0xFF);
@@ -353,7 +351,6 @@ int main() {
         model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
         program.set_uniform("model", model);
-        program.set_uniform("normalize_normal", true);
         nanosuit.draw(program);
 
         glStencilFunc(GL_NOTEQUAL, 1, 0xFF);

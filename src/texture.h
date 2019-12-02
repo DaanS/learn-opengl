@@ -32,7 +32,9 @@ struct texture {
         }
 
         GLenum format = GL_RGBA;
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, img_data);
+        GLenum internal_format = format;
+        if (std::string(path).find("nanosuit") != std::string::npos) internal_format = GL_SRGB_ALPHA;
+        glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, GL_UNSIGNED_BYTE, img_data);
         glGenerateMipmap(GL_TEXTURE_2D);
         stbi_image_free(img_data);
     }
