@@ -91,26 +91,17 @@ vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir) 
     }
     //return normal * 0.5 + 0.5;
 
-    vec3 view_dir = normalize(view_pos - frag_pos);
-
-    vec3 ambient_color = ambient * vec3(texture(material.diffuse, frag_tex_coords));
+    vec3 ambient_color = ambient * (material.has_diffuse_map ? vec3(texture(material.diffuse, frag_tex_coords)) : material.color_ambient);
 
     float diff_strength = max(dot(normal, light_dir), 0.0);
-    vec3 diff_color = diff_strength * diffuse * vec3(texture(material.diffuse, frag_tex_coords));
+    vec3 diff_color = diff_strength * diffuse * (material.has_diffuse_map ? vec3(texture(material.diffuse, frag_tex_coords)) : material.color_diffuse);
 
+    vec3 view_dir = normalize(view_pos - frag_pos);
     vec3 halfway_dir = normalize(light_dir + view_dir);
     float spec_strength = pow(max(dot(normal, halfway_dir), 0.0), 2 * material.shininess);
-    vec3 spec_color;
-    if (material.has_specular_map) {
-        spec_color = spec_strength * specular * vec3(texture(material.specular, frag_tex_coords));
-    } else {
-        spec_color = spec_strength * specular * material.color_specular;
-    }
+    vec3 spec_color = spec_strength * specular * (material.has_specular_map ? vec3(texture(material.specular, frag_tex_coords)) : material.color_specular);
 
-    vec3 em_color = vec3(0.0);
-    if (material.has_emissive_map) {
-        em_color = vec3(texture(material.emissive, frag_tex_coords));
-    }
+    vec3 em_color = (material.has_emissive_map ? vec3(texture(material.emissive, frag_tex_coords)) : vec3(0.0));
 
     return max(em_color, ambient_color + diff_color + spec_color);
 }

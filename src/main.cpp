@@ -342,30 +342,32 @@ int main() {
         program.set_uniform("spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
         sponza.draw(program);
 
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        glStencilMask(0xFF);
-        glDisable(GL_CULL_FACE);
+        //glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        //glStencilMask(0xFF);
+        //glDisable(GL_CULL_FACE);
 
         model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(120.0f, -1.75f, 20.0f));
         model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
         program.set_uniform("model", model);
-        nanosuit.draw(program);
+        //nanosuit.draw(program);
 
-        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-        glStencilMask(0x00);
-        glDisable(GL_DEPTH_TEST);
+        //glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        //glStencilMask(0x00);
+        //glDisable(GL_DEPTH_TEST);
 
         lamp.use();
         lamp.set_uniform("model", model);
         lamp.set_uniform("view", view);
         lamp.set_uniform("projection", projection);
         lamp.set_uniform("color", point_light_color);
-        nanosuit.draw(lamp);
+        //nanosuit.draw(lamp);
+        nanosuit.draw_outlined(program, lamp);
 
-        glEnable(GL_DEPTH_TEST);
+        //glEnable(GL_DEPTH_TEST);
 
+        glDisable(GL_CULL_FACE);
         for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, point_light_pos[i]);

@@ -164,6 +164,7 @@ struct mesh {
     }
 
     void draw(shader_program const & program) const {
+        program.use();
         program.set_uniform("material.color_diffuse", mat.color_diffuse);
         program.set_uniform("material.color_specular", mat.color_specular);
         program.set_uniform("material.shininess", mat.shininess);
@@ -258,5 +259,22 @@ struct model {
 
     void draw(shader_program const& program) const {
         for (auto& mesh : meshes) mesh.draw(program);
+    }
+
+    void draw_outlined(shader_program const& draw_program, shader_program const& outline_program) const {
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilMask(0xFF);
+        glDisable(GL_CULL_FACE);
+
+        for (auto& mesh : meshes) mesh.draw(draw_program);
+
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glStencilMask(0x00);
+        glDisable(GL_DEPTH_TEST);
+
+        for (auto& mesh : meshes) mesh.draw(outline_program);
+
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
     }
 };
