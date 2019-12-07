@@ -127,6 +127,14 @@ struct shader_program {
     void set_uniform(std::string const& name, T t) const {
         set_uniform(name.c_str(), std::forward<T>(t));
     }
+
+    void set_uniforms() {}
+
+    template<typename T, typename... Ts>
+    void set_uniforms(std::string const& name, T t, Ts... ts) {
+        set_uniform(name, t);
+        set_uniforms(ts...);
+    }
 };
 
 #endif

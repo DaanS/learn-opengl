@@ -28,11 +28,6 @@ float fov = 45.0f;
 
 glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
 
-std::ostream& operator<<(std::ostream& os, glm::vec3 v) {
-    os << "(" << v.x << ", " << v.y << ", " << v.z << ")";
-    return os;
-}
-
 struct sdl_window {
     SDL_Window * window;
     SDL_GLContext context;
@@ -146,10 +141,55 @@ struct sdl_window {
     }
 };
 
-std::string load_string(char const * path) {
-    std::ifstream ifs(path);
-    return std::string(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
-}
+struct vao {
+    GLuint id;
+    GLuint vbo;
+
+    template<typename T, size_t Len>
+    vao(T (&vertices)[Len], size_t stride, std::initializer_list<std::pair<size_t, size_t>> attribs) {
+        glGenVertexArrays(1, &id);
+        glBindVertexArray(id);
+
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+        size_t idx{0};
+        for (auto attrib : attribs) {
+            glVertexAttribPointer(idx, attrib.first, GL_FLOAT, GL_FALSE, stride * sizeof(T), (void *) (attrib.second * sizeof(T)));
+            glEnableVertexAttribArray(idx);
+            ++idx;
+        }
+    }
+
+    void use() {
+        glBindVertexArray(id);
+    }
+};
+
+struct light {
+    std::string name;
+    glm::vec3 pos;
+    glm::vec3 dir;
+    glm::vec3 color;
+    float ambient;
+    float diffuse;
+    float specular;
+    float constant;
+    float linear;
+    float quadratic;
+
+    void setup(shader_program& program) {
+        program.set_uniform(name + ".pos", pos);
+        program.set_uniform(name + ".dir", dir);
+        program.set_uniform(name + ".ambient", ambient * color);
+        program.set_uniform(name + ".diffuse", diffuse * color);
+        program.set_uniform(name + ".specular", specular * color);
+        program.set_uniform(name + ".constant", constant);
+        program.set_uniform(name + ".linear", linear);
+        program.set_uniform(name + ".quadratic", quadratic);
+    }
+};
 
 int main() {
     sdl_window window(width, height, "LearnOpenGL");
@@ -222,47 +262,79 @@ int main() {
          1.0f,  1.0f,  1.0f, 1.0f
     };
 
+    float skybox_vertices[] = {
+        // positions          
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,
+        1.0f, -1.0f, -1.0f,
+        1.0f, -1.0f, -1.0f,
+        1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        1.0f, -1.0f, -1.0f,
+        1.0f, -1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f, -1.0f,
+        1.0f, -1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        -1.0f,  1.0f, -1.0f,
+        1.0f,  1.0f, -1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+        1.0f, -1.0f, -1.0f,
+        1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+        1.0f, -1.0f,  1.0f
+    };
+
     constexpr size_t POINT_LIGHT_COUNT = 4;
 
-    shader_program program({{GL_VERTEX_SHADER, "src/main.vert"}, {GL_FRAGMENT_SHADER, "src/main.frag"}});
-    shader_program lamp({{GL_VERTEX_SHADER, "src/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/lamp.frag"}});
-    shader_program post({{GL_VERTEX_SHADER, "src/post.vert"}, {GL_FRAGMENT_SHADER, "src/post.frag"}});
+    shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
+    shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
+    shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
+    shader_program sky({{GL_VERTEX_SHADER, "src/shaders/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/sky.frag"}});
+    shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
 
+    cubemap sky_map{{"res/skybox/right.jpg", "res/skybox/left.jpg", "res/skybox/top.jpg", "res/skybox/bottom.jpg", "res/skybox/front.jpg", "res/skybox/back.jpg"}};
+
+    cubemap env_map{};
+
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
     glEnable(GL_STENCIL_TEST);
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_CULL_FACE);
 
-    GLuint lamp_vao;
-    glGenVertexArrays(1, &lamp_vao);
-    glBindVertexArray(lamp_vao);
-
-    GLuint lamp_vbo;
-    glGenBuffers(1, &lamp_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, lamp_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *) 0);
-    glEnableVertexAttribArray(0);
-
-    GLuint post_vao;
-    glGenVertexArrays(1, &post_vao);
-    glBindVertexArray(post_vao);
-
-    GLuint post_vbo;
-    glGenBuffers(1, &post_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, post_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(post_vertices), post_vertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *) 0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *) (2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+    vao lamp_vao(vertices, 8, {{3, 0}});
+    vao sky_vao(skybox_vertices, 3, {{3, 0}});
+    vao post_vao(post_vertices, 4, {{2, 0}, {2, 2}});
+    vao cube_vao(vertices, 8, {{3, 0}, {3, 3}});
     
     GLuint framebuffer;
     glGenFramebuffers(1, &framebuffer);
@@ -289,6 +361,13 @@ int main() {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+    GLuint vp_ubo;
+    glGenBuffers(1, &vp_ubo);
+    glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
+    glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, vp_ubo);
+
     while (window.running) {
         window.handle_events();
 
@@ -299,74 +378,87 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glStencilMask(0x00);
 
-        glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
-        glm::mat4 projection = glm::perspective(glm::radians(fov), (float) width / (float) height, 0.1f, 1000.0f);
-
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
-        model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
-
         program.use();
-        program.set_uniform("model", model);
-        program.set_uniform("view", view);
-        program.set_uniform("projection", projection);
-        program.set_uniform("view_pos", camera_pos);
 
-        glm::vec3 dir_light_color{1.0f, 1.0f, 1.0f};
-        program.set_uniform("dir_light.dir", glm::vec3(-0.2f, -1.0f, 0.1f));
-        program.set_uniform("dir_light.ambient", 0.05f * dir_light_color);
-        program.set_uniform("dir_light.diffuse", 0.0f * dir_light_color);
-        program.set_uniform("dir_light.specular", 0.0f * dir_light_color);
+        light dir_light{"dir_light", glm::vec3(0.0f), glm::vec3(-0.2f, -1.0f, 0.1f), glm::vec3(1.0f), 0.05f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        dir_light.setup(program);
 
         glm::vec3 point_light_color{1.0f, 0.5f, 0.0f};
         for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-            std::string name = "point_lights[" + std::to_string(i) + "]";
-            program.set_uniform(name + ".pos", point_light_pos[i]);
-            program.set_uniform(name + ".ambient", 0.05f * point_light_color);
-            program.set_uniform(name + ".diffuse", 0.8f * point_light_color);
-            program.set_uniform(name + ".specular", 1.0f * point_light_color);
-            program.set_uniform(name + ".constant", 1.0f);
-            program.set_uniform(name + ".linear", 0.014f);
-            program.set_uniform(name + ".quadratic", 0.0007f);
+            light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.05f, 0.8f, 1.0f, 1.0f, 0.014f, 0.0007f};
+            point_light.setup(program);
         }
 
-        program.set_uniform("spot_light.pos", camera_pos);
-        program.set_uniform("spot_light.dir", camera_front);
-        program.set_uniform("spot_light.ambient", glm::vec3(0.0f, 0.0f, 0.0f));
-        program.set_uniform("spot_light.diffuse", glm::vec3(1.0f, 1.0f, 1.0f));
-        program.set_uniform("spot_light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
-        program.set_uniform("spot_light.constant", 1.0f);
-        program.set_uniform("spot_light.linear", 0.045f);
-        program.set_uniform("spot_light.quadratic", 0.0075f);
-        program.set_uniform("spot_light.cutoff", glm::cos(glm::radians(12.5f)));
-        program.set_uniform("spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
+        light spot_light{"spot_light", camera_pos, camera_front, glm::vec3(1.0f), 0.0f, 1.0f, 1.0f, 1.0f, 0.045f, 0.0075f};
+        spot_light.setup(program);
+        program.set_uniforms("spot_light.cutoff", glm::cos(glm::radians(12.5f)), "spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
+
+        glm::mat4 model;
+
+        glm::vec3 targets[6] = {
+            glm::vec3( 1.0f,  0.0f,  0.0f),
+            glm::vec3(-1.0f,  0.0f,  0.0f),
+            glm::vec3( 0.0f,  1.0f,  0.0f),
+            glm::vec3( 0.0f, -1.0f,  0.0f),
+            glm::vec3( 0.0f,  0.0f,  1.0f),
+            glm::vec3( 0.0f,  0.0f, -1.0f)
+        };
+        glm::vec3 ups[6] = {
+            glm::vec3( 0.0f, -1.0f,  0.0f),
+            glm::vec3( 0.0f, -1.0f,  0.0f),
+            glm::vec3( 0.0f,  0.0f,  1.0f),
+            glm::vec3( 0.0f,  0.0f, -1.0f),
+            glm::vec3( 0.0f, -1.0f,  0.0f),
+            glm::vec3( 0.0f, -1.0f,  0.0f)
+        };
+        glm::vec3 cube_pos = glm::vec3(10.0f, 25.0f, 0.0f);
+        program.set_uniform("view_pos", cube_pos);
+        glm::mat4 cube_proj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 1000.0f);
+        glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(cube_proj));
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
+        model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
+        program.set_uniform("model", model);
+        for (size_t i = 0; i < 6; ++i) {
+            glm::mat4 cube_view = glm::lookAt(cube_pos, cube_pos + targets[i], ups[i]);
+            glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(cube_view));
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, env_map.id, 0);
+            glViewport(0, 0, 1024, 1024);
+            sponza.draw(program);
+            glClear(GL_DEPTH_BUFFER_BIT);
+        }
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_color_buf, 0);
+        glViewport(0, 0, width, height);
+        program.set_uniform("view_pos", camera_pos);
+        program.set_uniform("camera_dir", camera_front);
+
+        glm::mat4 projection = glm::perspective(glm::radians(fov), (float) width / (float) height, 0.1f, 1000.0f);
+        glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
+
+        glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(view));
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(projection));
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+        // draw room
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
+        model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
+        program.set_uniform("model", model);
         sponza.draw(program);
 
-        //glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        //glStencilMask(0xFF);
-        //glDisable(GL_CULL_FACE);
-
+        // draw outlined nanosuit
         model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(120.0f, -1.75f, 20.0f));
         model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
         program.set_uniform("model", model);
-        //nanosuit.draw(program);
-
-        //glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-        //glStencilMask(0x00);
-        //glDisable(GL_DEPTH_TEST);
-
         lamp.use();
-        lamp.set_uniform("model", model);
-        lamp.set_uniform("view", view);
-        lamp.set_uniform("projection", projection);
-        lamp.set_uniform("color", point_light_color);
-        //nanosuit.draw(lamp);
+        lamp.set_uniforms("model", model, "color", point_light_color);
         nanosuit.draw_outlined(program, lamp);
 
-        //glEnable(GL_DEPTH_TEST);
-
+        // draw light placholders
         glDisable(GL_CULL_FACE);
         for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
             glm::mat4 model = glm::mat4(1.0f);
@@ -374,23 +466,45 @@ int main() {
             model = glm::scale(model, glm::vec3(0.2f));
 
             lamp.use();
-            lamp.set_uniform("model", model);
-            lamp.set_uniform("view", view);
-            lamp.set_uniform("projection", projection);
-            lamp.set_uniform("color", point_light_color);
+            lamp.set_uniforms("model", model, "color", point_light_color);
 
-            glBindVertexArray(lamp_vao);
+            lamp_vao.use();
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
         glEnable(GL_CULL_FACE);
 
+        // draw magicube
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(10.0f, 25.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(5.0f));
+        glDisable(GL_CULL_FACE);
+        reflect.use();
+        reflect.set_uniforms("model", model, "camera_pos", camera_pos);
+        //sky_map.activate(GL_TEXTURE0);
+        env_map.activate(GL_TEXTURE0);
+        cube_vao.use();
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glEnable(GL_CULL_FACE);
+
+        // draw skybox
+        glDepthMask(GL_FALSE);
+        glDisable(GL_CULL_FACE);
+        sky.use();
+        sky.set_uniforms("view", glm::mat4(glm::mat3(view)), "projection", projection, "tex", 0);
+        //sky_map.activate(GL_TEXTURE0);
+        env_map.activate(GL_TEXTURE0);
+        sky_vao.use();
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_CULL_FACE);
+
+        // post-processing
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         post.use();
-        post.set_uniform("width", static_cast<float>(width));
-        post.set_uniform("height", static_cast<float>(height));
-        glBindVertexArray(post_vao);
+        post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height));
+        post_vao.use();
         glDisable(GL_DEPTH_TEST);
         glBindTexture(GL_TEXTURE_2D, tex_color_buf);
         glDrawArrays(GL_TRIANGLES, 0, 6);

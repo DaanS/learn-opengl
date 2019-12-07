@@ -276,5 +276,6 @@ struct model {
 
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
     }
 };

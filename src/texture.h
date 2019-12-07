@@ -8,15 +8,75 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-enum class texture_type { diffuse, specular };
+struct cubemap {
+    GLuint id;
+
+    cubemap(std::array<const std::string, 6> const & face_paths) {
+        glGenTextures(1, &id);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, id);
+
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        int width, height, channel_count;
+        for (size_t i = 0; i < face_paths.size(); ++i) {
+            uint8_t * img_data = stbi_load(face_paths[i].c_str(), &width, &height, &channel_count, 4);
+            if (!img_data) {
+                std::cerr << "ERROR loading " << face_paths[i] << std::endl;
+            }
+
+            GLenum format = GL_RGBA;
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, img_data);
+            stbi_image_free(img_data);
+        }
+    }
+
+    cubemap() {
+        glGenTextures(1, &id);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, id);
+
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        for (size_t i = 0; i < 6; ++i) {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA, 1024, 1024, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        }
+    }
+
+
+    cubemap(cubemap && other) {
+        id = other.id;
+        other.id = 0;
+    }
+
+    cubemap & operator=(cubemap && other) {
+        std::swap(id, other.id);
+        return *this;
+    }
+
+    cubemap(cubemap const & other) = delete;
+    cubemap & operator=(cubemap const & other) = delete;
+
+    ~cubemap() {
+        glDeleteTextures(1, &id);
+    }
+
+    void activate(GLenum unit) {
+        glActiveTexture(unit);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, id);
+    }
+};
 
 struct texture {
     GLuint id;
-    texture_type type;
 
-    texture(char const * path, texture_type type = texture_type::diffuse)
-        : type{type}
-    {
+    texture(char const * path) {
         glGenTextures(1, &id);
         glBindTexture(GL_TEXTURE_2D, id);
 
@@ -39,18 +99,15 @@ struct texture {
         stbi_image_free(img_data);
     }
 
-    texture(std::string const& path, texture_type type) : texture(path.c_str(), type) {}
     texture(std::string const& path) : texture(path.c_str()) {}
 
     texture(texture && other) {
         id = other.id;
-        type = other.type;
         other.id = 0;
     }
 
     texture & operator=(texture && other) {
         std::swap(id, other.id);
-        type = other.type;
         return *this;
     }
 
