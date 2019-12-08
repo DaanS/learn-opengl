@@ -8,6 +8,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include "model.h"
+
 struct cubemap {
     GLuint id;
 
@@ -34,7 +36,7 @@ struct cubemap {
         }
     }
 
-    cubemap() {
+    cubemap(size_t size) {
         glGenTextures(1, &id);
         glBindTexture(GL_TEXTURE_CUBE_MAP, id);
 
@@ -45,10 +47,9 @@ struct cubemap {
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         for (size_t i = 0; i < 6; ++i) {
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA, 1024, 1024, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         }
     }
-
 
     cubemap(cubemap && other) {
         id = other.id;

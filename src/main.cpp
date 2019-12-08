@@ -14,9 +14,11 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
 
+#include "vertices.h"
 #include "shader.h"
 #include "model.h"
 #include "texture.h"
+#include "gl_util.h"
 
 static unsigned int width = 1920;
 static unsigned int height = 1080;
@@ -199,112 +201,11 @@ int main() {
         return -1;
     }
 
-    float vertices[] = {
-        // positions          // normals           // texture coords
-        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
-         0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
-
-        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 0.0f,
-
-        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-
-         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-         0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-
-        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
-         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
-
-        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f
-    };
-
     glm::vec3 point_light_pos[] = {
         glm::vec3(-124.0f, 25.0f, -44.0f),
         glm::vec3(-124.0f, 25.0f,  29.0f),
         glm::vec3(  97.5f, 25.0f,  29.0f),
         glm::vec3(  97.5f, 25.0f, -44.0f)
-    };
-
-    float post_vertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
-        // positions   // texCoords
-        -1.0f,  1.0f,  0.0f, 1.0f,
-        -1.0f, -1.0f,  0.0f, 0.0f,
-         1.0f, -1.0f,  1.0f, 0.0f,
-
-        -1.0f,  1.0f,  0.0f, 1.0f,
-         1.0f, -1.0f,  1.0f, 0.0f,
-         1.0f,  1.0f,  1.0f, 1.0f
-    };
-
-    float skybox_vertices[] = {
-        // positions          
-        -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f,
-        1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
-
-        -1.0f, -1.0f,  1.0f,
-        -1.0f, -1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f,  1.0f,
-        -1.0f, -1.0f,  1.0f,
-
-        1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f,
-
-        -1.0f, -1.0f,  1.0f,
-        -1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f, -1.0f,  1.0f,
-        -1.0f, -1.0f,  1.0f,
-
-        -1.0f,  1.0f, -1.0f,
-        1.0f,  1.0f, -1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        -1.0f,  1.0f,  1.0f,
-        -1.0f,  1.0f, -1.0f,
-
-        -1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,
-        1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,
-        1.0f, -1.0f,  1.0f
     };
 
     constexpr size_t POINT_LIGHT_COUNT = 4;
@@ -314,13 +215,13 @@ int main() {
     shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
     shader_program sky({{GL_VERTEX_SHADER, "src/shaders/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/sky.frag"}});
     shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
+    shader_program explode({{GL_VERTEX_SHADER, "src/shaders/explode.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/explode.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/explode.frag"}});
+    shader_program normals({{GL_VERTEX_SHADER, "src/shaders/normals.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/normals.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
 
     cubemap sky_map{{"res/skybox/right.jpg", "res/skybox/left.jpg", "res/skybox/top.jpg", "res/skybox/bottom.jpg", "res/skybox/front.jpg", "res/skybox/back.jpg"}};
-
-    cubemap env_map{};
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -335,6 +236,7 @@ int main() {
     vao sky_vao(skybox_vertices, 3, {{3, 0}});
     vao post_vao(post_vertices, 4, {{2, 0}, {2, 2}});
     vao cube_vao(vertices, 8, {{3, 0}, {3, 3}});
+    vao points_vao(point_vertices, 5, {{2, 0}, {3, 2}});
     
     GLuint framebuffer;
     glGenFramebuffers(1, &framebuffer);
@@ -368,6 +270,9 @@ int main() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, vp_ubo);
 
+    cubemap env_map(1024);
+    bool first = true;
+
     while (window.running) {
         window.handle_events();
 
@@ -395,39 +300,7 @@ int main() {
 
         glm::mat4 model;
 
-        glm::vec3 targets[6] = {
-            glm::vec3( 1.0f,  0.0f,  0.0f),
-            glm::vec3(-1.0f,  0.0f,  0.0f),
-            glm::vec3( 0.0f,  1.0f,  0.0f),
-            glm::vec3( 0.0f, -1.0f,  0.0f),
-            glm::vec3( 0.0f,  0.0f,  1.0f),
-            glm::vec3( 0.0f,  0.0f, -1.0f)
-        };
-        glm::vec3 ups[6] = {
-            glm::vec3( 0.0f, -1.0f,  0.0f),
-            glm::vec3( 0.0f, -1.0f,  0.0f),
-            glm::vec3( 0.0f,  0.0f,  1.0f),
-            glm::vec3( 0.0f,  0.0f, -1.0f),
-            glm::vec3( 0.0f, -1.0f,  0.0f),
-            glm::vec3( 0.0f, -1.0f,  0.0f)
-        };
-        glm::vec3 cube_pos = glm::vec3(10.0f, 25.0f, 0.0f);
-        program.set_uniform("view_pos", cube_pos);
-        glm::mat4 cube_proj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 1000.0f);
-        glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
-        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(cube_proj));
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
-        model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
-        program.set_uniform("model", model);
-        for (size_t i = 0; i < 6; ++i) {
-            glm::mat4 cube_view = glm::lookAt(cube_pos, cube_pos + targets[i], ups[i]);
-            glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(cube_view));
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, env_map.id, 0);
-            glViewport(0, 0, 1024, 1024);
-            sponza.draw(program);
-            glClear(GL_DEPTH_BUFFER_BIT);
-        }
+        if (first) env_map = make_cubemap(glm::vec3(10.0f, 25.0f, 0.0f), 1024, program, vp_ubo, {&sponza});
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_color_buf, 0);
         glViewport(0, 0, width, height);
         program.set_uniform("view_pos", camera_pos);
@@ -448,15 +321,30 @@ int main() {
         program.set_uniform("model", model);
         sponza.draw(program);
 
+        // draw hair
+        normals.use();
+        normals.set_uniforms("model", model, "color", point_light_color);
+        sponza.draw(normals);
+
         // draw outlined nanosuit
         model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(120.0f, -1.75f, 20.0f));
         model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
+        program.use();
         program.set_uniform("model", model);
         lamp.use();
         lamp.set_uniforms("model", model, "color", point_light_color);
         nanosuit.draw_outlined(program, lamp);
+
+        // draw exploding nanosuit
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(-120.0f, -1.75f, 20.0f));
+        model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
+        explode.use();
+        explode.set_uniforms("model", model, "time", window.get_time());
+        nanosuit.draw(explode);
 
         // draw light placholders
         glDisable(GL_CULL_FACE);
@@ -480,7 +368,6 @@ int main() {
         glDisable(GL_CULL_FACE);
         reflect.use();
         reflect.set_uniforms("model", model, "camera_pos", camera_pos);
-        //sky_map.activate(GL_TEXTURE0);
         env_map.activate(GL_TEXTURE0);
         cube_vao.use();
         glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -491,8 +378,7 @@ int main() {
         glDisable(GL_CULL_FACE);
         sky.use();
         sky.set_uniforms("view", glm::mat4(glm::mat3(view)), "projection", projection, "tex", 0);
-        //sky_map.activate(GL_TEXTURE0);
-        env_map.activate(GL_TEXTURE0);
+        sky_map.activate(GL_TEXTURE0);
         sky_vao.use();
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glDepthMask(GL_TRUE);
@@ -511,6 +397,7 @@ int main() {
         glEnable(GL_DEPTH_TEST);
 
         window.swap_buffer();
+        first = false;
     }
 
     return 0;

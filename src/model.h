@@ -1,3 +1,6 @@
+#ifndef MODEL_H
+#define MODEL_H
+
 #include <vector>
 #include <memory>
 
@@ -279,3 +282,5 @@ struct model {
         glStencilFunc(GL_ALWAYS, 1, 0xFF);
     }
 };
+
+#endif
