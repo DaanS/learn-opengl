@@ -52,6 +52,8 @@ struct sdl_window {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
         context = SDL_GL_CreateContext(window);
 
@@ -225,18 +227,48 @@ int main() {
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+
     glEnable(GL_STENCIL_TEST);
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
     glStencilFunc(GL_ALWAYS, 1, 0xFF);
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glEnable(GL_CULL_FACE);
+
+    glEnable(GL_MULTISAMPLE);
 
     vao lamp_vao(vertices, 8, {{3, 0}});
     vao sky_vao(skybox_vertices, 3, {{3, 0}});
     vao post_vao(post_vertices, 4, {{2, 0}, {2, 2}});
     vao cube_vao(vertices, 8, {{3, 0}, {3, 3}});
     vao points_vao(point_vertices, 5, {{2, 0}, {3, 2}});
+
+    GLuint ms_fb;
+    glGenFramebuffers(1, &ms_fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
+
+    GLuint ms_color_buf;
+    glGenTextures(1, &ms_color_buf);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf);
+    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGB, width, height, GL_TRUE);
+    //glTexParameteri(GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    //glTexParameteri(GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+
+    GLuint ms_rbo;
+    glGenRenderbuffers(1, &ms_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, ms_rbo);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 8, GL_DEPTH24_STENCIL8, width, height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ms_rbo);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "ERROR: ms_fb lacking completeness" << std::endl;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
     GLuint framebuffer;
     glGenFramebuffers(1, &framebuffer);
@@ -276,7 +308,9 @@ int main() {
     while (window.running) {
         window.handle_events();
 
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        //glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glEnable(GL_MULTISAMPLE);
+        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
 
         glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
         glStencilMask(0xFF);
@@ -300,8 +334,9 @@ int main() {
 
         glm::mat4 model;
 
+        // TODO find a better place/way to render this cubemap
         if (first) env_map = make_cubemap(glm::vec3(10.0f, 25.0f, 0.0f), 1024, program, vp_ubo, {&sponza});
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_color_buf, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
         glViewport(0, 0, width, height);
         program.set_uniform("view_pos", camera_pos);
         program.set_uniform("camera_dir", camera_front);
@@ -385,6 +420,10 @@ int main() {
         glEnable(GL_CULL_FACE);
 
         // post-processing
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, ms_fb);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+        glDrawBuffer(GL_BACK);
+        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
