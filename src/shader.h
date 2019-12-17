@@ -113,6 +113,8 @@ struct shader_program {
             glUniform1ui(uniform, t);
         } else if constexpr (std::is_same_v<T, float>) {
             glUniform1f(uniform, t);
+        } else if constexpr (std::is_same_v<T, glm::vec2>) {
+            glUniform2fv(uniform, 1, glm::value_ptr(t));
         } else if constexpr (std::is_same_v<T, glm::vec3>) {
             glUniform3fv(uniform, 1, glm::value_ptr(t));
         } else if constexpr (std::is_same_v<T, glm::mat4>) {

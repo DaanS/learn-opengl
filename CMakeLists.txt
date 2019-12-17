@@ -17,17 +17,27 @@ find_package(OpenGL REQUIRED)
 include_directories("${SDL2_INCLUDE_DIRS}")
 include_directories("${CMAKE_SOURCE_DIR}/include")
 include_directories("${CMAKE_SOURCE_DIR}/src")
-add_compile_options(-Wall -Wextra -pedantic -Werror)
 
+add_compile_options(-Wall -Wextra -Werror)
 add_library(GLAD
     src/glad.c
 )
 
+add_compile_options(-pedantic)
 add_executable(learn
     src/main.cpp
-    src/glad.c
 )
 target_link_libraries(learn
+    GLAD
+    ${CMAKE_DL_LIBS}
+    ${SDL2_LIBRARIES}
+    ${ASSIMP_LIBRARIES}
+)
+
+add_executable(instance
+    src/instance.cpp
+)
+target_link_libraries(instance
     GLAD
     ${CMAKE_DL_LIBS}
     ${SDL2_LIBRARIES}
