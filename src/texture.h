@@ -29,7 +29,8 @@ struct cubemap {
             }
 
             GLenum format = GL_RGBA;
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, img_data);
+            GLenum internal_format = GL_SRGB_ALPHA;
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, internal_format, width, height, 0, format, GL_UNSIGNED_BYTE, img_data);
             stbi_image_free(img_data);
         }
     }
@@ -45,7 +46,7 @@ struct cubemap {
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         for (size_t i = 0; i < 6; ++i) {
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, size, size, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
         }
     }
 
@@ -95,7 +96,8 @@ struct texture {
         }
 
         GLenum format = GL_RGBA;
-        GLenum internal_format = format;
+        GLenum internal_format = GL_SRGB_ALPHA;
+        if (std::string(path).find("normal") != std::string::npos) internal_format = GL_RGBA;
         if (std::string(path).find("nanosuit") != std::string::npos) internal_format = GL_SRGB_ALPHA;
         glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, GL_UNSIGNED_BYTE, img_data);
         glGenerateMipmap(GL_TEXTURE_2D);

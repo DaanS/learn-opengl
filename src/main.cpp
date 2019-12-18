@@ -23,12 +23,18 @@
 static unsigned int width = 1920;
 static unsigned int height = 1080;
 
-glm::vec3 camera_pos(0.0f, 25.0f, 0.0f);
-glm::vec3 camera_front(1.0f, 0.0f, 0.0f);
-glm::vec3 camera_up(0.0f, 1.0f, 0.0f);
-float fov = 45.0f;
+static glm::vec3 camera_pos(0.0f, 25.0f, 0.0f);
+static glm::vec3 camera_front(1.0f, 0.0f, 0.0f);
+static glm::vec3 camera_up(0.0f, 1.0f, 0.0f);
+static float fov = 45.0f;
 
-glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
+static bool draw_hair{false};
+static bool draw_magicube{false};
+static bool draw_explodo_suit{false};
+static bool draw_outline_suit{false};
+static bool use_spotlight{true};
+static bool use_gamma{true};
+static const float gamma_strength{2.2f};
 
 struct sdl_window {
     SDL_Window * window;
@@ -82,6 +88,12 @@ struct sdl_window {
                 case SDL_KEYDOWN:
                     switch (event.key.keysym.scancode) {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
+                        case SDL_SCANCODE_B: draw_explodo_suit = !draw_explodo_suit; break;
+                        case SDL_SCANCODE_M: draw_magicube = !draw_magicube; break;
+                        case SDL_SCANCODE_N: draw_hair = !draw_hair; break;
+                        case SDL_SCANCODE_O: draw_outline_suit = !draw_outline_suit; break;
+                        case SDL_SCANCODE_P: use_spotlight = !use_spotlight; break;
+                        case SDL_SCANCODE_G: use_gamma = !use_gamma; break;
                         default: break;
                     }
                     break;
@@ -223,7 +235,7 @@ int main() {
     model sponza{"res/sponza/sponza.obj"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
 
-    cubemap sky_map{{"res/skybox/right.jpg", "res/skybox/left.jpg", "res/skybox/top.jpg", "res/skybox/bottom.jpg", "res/skybox/front.jpg", "res/skybox/back.jpg"}};
+    cubemap star_map{{"res/starbox/right.png", "res/starbox/left.png", "res/starbox/top.png", "res/starbox/bottom.png", "res/starbox/front.png", "res/starbox/back.png"}};
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -252,9 +264,7 @@ int main() {
     GLuint ms_color_buf;
     glGenTextures(1, &ms_color_buf);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf);
-    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGB, width, height, GL_TRUE);
-    //glTexParameteri(GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    //glTexParameteri(GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGB16F, width, height, GL_TRUE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
 
@@ -277,7 +287,7 @@ int main() {
     GLuint tex_color_buf;
     glGenTextures(1, &tex_color_buf);
     glBindTexture(GL_TEXTURE_2D, tex_color_buf);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -308,7 +318,6 @@ int main() {
     while (window.running) {
         window.handle_events();
 
-        //glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
         glEnable(GL_MULTISAMPLE);
         glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
 
@@ -319,25 +328,33 @@ int main() {
 
         program.use();
 
-        light dir_light{"dir_light", glm::vec3(0.0f), glm::vec3(-0.2f, -1.0f, 0.1f), glm::vec3(1.0f), 0.05f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        light dir_light{"dir_light", glm::vec3(0.0f), glm::vec3(-0.2f, -1.0f, 0.1f), glm::vec3(1.0f, 12.0f / 14.0f, 13.0f / 14.0f), 0.0002f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
         dir_light.setup(program);
 
         glm::vec3 point_light_color{1.0f, 0.5f, 0.0f};
+        if (use_gamma) point_light_color = glm::pow(point_light_color, glm::vec3(gamma_strength));
         for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-            light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.05f, 0.8f, 1.0f, 1.0f, 0.014f, 0.0007f};
+            light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.05f, 0.8f, 1.0f, 0.0f, 0.0f, 0.01f};
             point_light.setup(program);
         }
 
-        light spot_light{"spot_light", camera_pos, camera_front, glm::vec3(1.0f), 0.0f, 1.0f, 1.0f, 1.0f, 0.045f, 0.0075f};
+        glm::vec3 spot_light_color(1.0f);
+        if (!use_spotlight) spot_light_color = glm::vec3(0.0f);
+        if (use_gamma) spot_light_color = glm::pow(spot_light_color, glm::vec3(gamma_strength));
+        light spot_light{"spot_light", camera_pos, camera_front, spot_light_color, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.03f};
         spot_light.setup(program);
         program.set_uniforms("spot_light.cutoff", glm::cos(glm::radians(12.5f)), "spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
 
         glm::mat4 model;
 
         // TODO find a better place/way to render this cubemap
-        if (first) env_map = make_cubemap(glm::vec3(10.0f, 25.0f, 0.0f), 1024, program, vp_ubo, {&sponza});
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
-        glViewport(0, 0, width, height);
+        if (draw_magicube && first) {
+            env_map = make_cubemap(glm::vec3(10.0f, 25.0f, 0.0f), 1024, program, vp_ubo, {&sponza});
+            first = false;
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
+            glViewport(0, 0, width, height);
+        }
+
         program.set_uniform("view_pos", camera_pos);
         program.set_uniform("camera_dir", camera_front);
 
@@ -357,29 +374,35 @@ int main() {
         sponza.draw(program);
 
         // draw hair
-        normals.use();
-        normals.set_uniforms("model", model, "color", point_light_color);
-        sponza.draw(normals);
+        if (draw_hair) {
+            normals.use();
+            normals.set_uniforms("model", model, "color", point_light_color);
+            sponza.draw(normals);
+        }
 
         // draw outlined nanosuit
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(120.0f, -1.75f, 20.0f));
-        model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
-        program.use();
-        program.set_uniform("model", model);
-        lamp.use();
-        lamp.set_uniforms("model", model, "color", point_light_color);
-        nanosuit.draw_outlined(program, lamp);
+        if (draw_outline_suit) {
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(120.0f, -1.75f, 20.0f));
+            model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
+            program.use();
+            program.set_uniform("model", model);
+            lamp.use();
+            lamp.set_uniforms("model", model, "color", point_light_color);
+            nanosuit.draw_outlined(program, lamp);
+        }
 
         // draw exploding nanosuit
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(-120.0f, -1.75f, 20.0f));
-        model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
-        explode.use();
-        explode.set_uniforms("model", model, "time", window.get_time());
-        nanosuit.draw(explode);
+        if (draw_explodo_suit) {
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(-120.0f, -1.75f, 20.0f));
+            model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
+            explode.use();
+            explode.set_uniforms("model", model, "time", window.get_time());
+            nanosuit.draw(explode);
+        }
 
         // draw light placholders
         glDisable(GL_CULL_FACE);
@@ -397,23 +420,25 @@ int main() {
         glEnable(GL_CULL_FACE);
 
         // draw magicube
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(10.0f, 25.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(5.0f));
-        glDisable(GL_CULL_FACE);
-        reflect.use();
-        reflect.set_uniforms("model", model, "camera_pos", camera_pos);
-        env_map.activate(GL_TEXTURE0);
-        cube_vao.use();
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-        glEnable(GL_CULL_FACE);
+        if (draw_magicube) {
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(10.0f, 25.0f, 0.0f));
+            model = glm::scale(model, glm::vec3(5.0f));
+            glDisable(GL_CULL_FACE);
+            reflect.use();
+            reflect.set_uniforms("model", model, "camera_pos", camera_pos);
+            env_map.activate(GL_TEXTURE0);
+            cube_vao.use();
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+            glEnable(GL_CULL_FACE);
+        }
 
         // draw skybox
         glDepthMask(GL_FALSE);
         glDisable(GL_CULL_FACE);
         sky.use();
         sky.set_uniforms("view", glm::mat4(glm::mat3(view)), "projection", projection, "tex", 0);
-        sky_map.activate(GL_TEXTURE0);
+        star_map.activate(GL_TEXTURE0);
         sky_vao.use();
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glDepthMask(GL_TRUE);
@@ -425,10 +450,11 @@ int main() {
         glDrawBuffer(GL_BACK);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         post.use();
-        post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height));
+        post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "use_gamma", use_gamma, "gamma", gamma_strength);
         post_vao.use();
         glDisable(GL_DEPTH_TEST);
         glBindTexture(GL_TEXTURE_2D, tex_color_buf);
@@ -436,7 +462,6 @@ int main() {
         glEnable(GL_DEPTH_TEST);
 
         window.swap_buffer();
-        first = false;
     }
 
     return 0;

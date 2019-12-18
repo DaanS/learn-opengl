@@ -7,5 +7,5 @@ uniform samplerCube tex;
 
 void main() {
     frag_color = texture(tex, frag_tex_coords);
-    //frag_color = vec4(1.0);
+    frag_color.rgb = pow(frag_color.rgb, vec3(1.6));
 }

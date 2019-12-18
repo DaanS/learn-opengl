@@ -4,6 +4,8 @@ in vec2 frag_tex_coords[9];
 out vec4 frag_color;
 
 uniform sampler2D tex;
+uniform bool use_gamma;
+uniform float gamma;
 
 const float radius = 1.0;
 const float offset = 0.5 * (radius / 450.0);
@@ -18,4 +20,5 @@ void main() {
     //    frag_color += vec4(edge[i] * vec3(texture(tex, frag_tex_coords[i])), 1.0);
     //}
     frag_color = texture(tex, frag_tex_coords[4]);
+    if (use_gamma) frag_color.rgb = pow(frag_color.rgb, vec3(1.0 / gamma));
 }
