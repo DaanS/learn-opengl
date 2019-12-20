@@ -34,6 +34,7 @@ static bool draw_explodo_suit{false};
 static bool draw_outline_suit{false};
 static bool use_spotlight{true};
 static bool use_gamma{true};
+static bool is_day{true};
 static const float gamma_strength{2.2f};
 
 struct sdl_window {
@@ -89,11 +90,12 @@ struct sdl_window {
                     switch (event.key.keysym.scancode) {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
                         case SDL_SCANCODE_B: draw_explodo_suit = !draw_explodo_suit; break;
+                        case SDL_SCANCODE_G: use_gamma = !use_gamma; break;
                         case SDL_SCANCODE_M: draw_magicube = !draw_magicube; break;
                         case SDL_SCANCODE_N: draw_hair = !draw_hair; break;
                         case SDL_SCANCODE_O: draw_outline_suit = !draw_outline_suit; break;
                         case SDL_SCANCODE_P: use_spotlight = !use_spotlight; break;
-                        case SDL_SCANCODE_G: use_gamma = !use_gamma; break;
+                        case SDL_SCANCODE_T: is_day = !is_day; break;
                         default: break;
                     }
                     break;
@@ -231,10 +233,12 @@ int main() {
     shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
     shader_program explode({{GL_VERTEX_SHADER, "src/shaders/explode.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/explode.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/explode.frag"}});
     shader_program normals({{GL_VERTEX_SHADER, "src/shaders/normals.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/normals.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
+    shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
 
+    cubemap sky_map{{"res/skybox/right.jpg", "res/skybox/left.jpg", "res/skybox/top.jpg", "res/skybox/bottom.jpg", "res/skybox/front.jpg", "res/skybox/back.jpg"}};
     cubemap star_map{{"res/starbox/right.png", "res/starbox/left.png", "res/starbox/top.png", "res/starbox/bottom.png", "res/starbox/front.png", "res/starbox/back.png"}};
 
     glEnable(GL_DEPTH_TEST);
@@ -280,29 +284,51 @@ int main() {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
-    GLuint framebuffer;
-    glGenFramebuffers(1, &framebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    GLuint pp_fb;
+    glGenFramebuffers(1, &pp_fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, pp_fb);
 
-    GLuint tex_color_buf;
-    glGenTextures(1, &tex_color_buf);
-    glBindTexture(GL_TEXTURE_2D, tex_color_buf);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    GLuint pp_color_buf;
+    glGenTextures(1, &pp_color_buf);
+    glBindTexture(GL_TEXTURE_2D, pp_color_buf);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pp_color_buf, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_color_buf, 0);
 
-    GLuint rbo;
-    glGenRenderbuffers(1, &rbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    GLuint pp_rbo;
+    glGenRenderbuffers(1, &pp_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, pp_rbo);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, pp_rbo);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
     }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    unsigned int const shadow_size{4096};
+
+    GLuint depth_fb;
+    glGenFramebuffers(1, &depth_fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, depth_fb);
+
+    GLuint depth_buf;
+    glGenTextures(1, &depth_buf);
+    glBindTexture(GL_TEXTURE_2D, depth_buf);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, shadow_size, shadow_size, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float border_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_buf, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     GLuint vp_ubo;
@@ -326,16 +352,36 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glStencilMask(0x00);
 
+        glm::vec3 warm_orange{1.0f, 0.5f, 0.0f};
+        if (use_gamma) warm_orange = glm::pow(warm_orange, glm::vec3(gamma_strength));
+
+        glm::vec3 sunlight{1.0f, 0.9f, 0.7f};
+        if (use_gamma) sunlight = glm::pow(sunlight, glm::vec3(gamma_strength));
+
+        glm::vec3 sunlight_dir{-0.2f, -1.0f, 0.1f};
+        sunlight_dir = glm::normalize(sunlight_dir);
+
         program.use();
 
-        light dir_light{"dir_light", glm::vec3(0.0f), glm::vec3(-0.2f, -1.0f, 0.1f), glm::vec3(1.0f, 12.0f / 14.0f, 13.0f / 14.0f), 0.0002f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-        dir_light.setup(program);
+        cubemap* skybox = &sky_map;
+        if (is_day) {
+            light dir_light{"dir_light", glm::vec3(0.0f), sunlight_dir, sunlight, 0.002f, 0.898f, 0.1f, 0.0f, 0.0f, 0.0f};
+            dir_light.setup(program);
 
-        glm::vec3 point_light_color{1.0f, 0.5f, 0.0f};
-        if (use_gamma) point_light_color = glm::pow(point_light_color, glm::vec3(gamma_strength));
-        for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-            light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.05f, 0.8f, 1.0f, 0.0f, 0.0f, 0.01f};
-            point_light.setup(program);
+            for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
+                light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), glm::vec3(0.0f), 0.05f, 0.8f, 1.0f, 0.0f, 0.0f, 0.01f};
+                point_light.setup(program);
+            }
+        } else {
+            light dir_light{"dir_light", glm::vec3(0.0f), sunlight_dir, glm::vec3(1.0f, 12.0f / 14.0f, 13.0f / 14.0f), 0.0002f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+            dir_light.setup(program);
+
+            for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
+                light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), warm_orange, 0.05f, 0.8f, 1.0f, 0.0f, 0.0f, 0.01f};
+                point_light.setup(program);
+            }
+
+            skybox = &star_map;
         }
 
         glm::vec3 spot_light_color(1.0f);
@@ -358,6 +404,10 @@ int main() {
         program.set_uniform("view_pos", camera_pos);
         program.set_uniform("camera_dir", camera_front);
 
+        glm::mat4 light_projection = glm::ortho(-350.0f, 420.0f, -230.0f, 250.0f, 10.0f, 600.0f);
+        glm::mat4 light_view = glm::lookAt(-sunlight_dir * 500.0f, glm::vec3(0.0f), glm::vec3(0.2f, 1.0f, 0.0f));
+        glm::mat4 light_space = light_projection * light_view;
+
         glm::mat4 projection = glm::perspective(glm::radians(fov), (float) width / (float) height, 0.1f, 1000.0f);
         glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
 
@@ -366,17 +416,32 @@ int main() {
         glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(projection));
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        // draw room
+        // prepare room
         model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
         model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
-        program.set_uniform("model", model);
+
+        // draw shadow map
+        depth.use();
+        depth.set_uniforms("light_space", light_space, "model", model);
+        glViewport(0, 0, shadow_size, shadow_size);
+        glBindFramebuffer(GL_FRAMEBUFFER, depth_fb);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        sponza.draw(depth);
+        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
+        glViewport(0, 0, width, height);
+
+        // draw room
+        program.use();
+        glActiveTexture(GL_TEXTURE6);
+        glBindTexture(GL_TEXTURE_2D, depth_buf);
+        program.set_uniforms("shadow_map", 6, "light_space", light_space, "model", model);
         sponza.draw(program);
 
         // draw hair
         if (draw_hair) {
             normals.use();
-            normals.set_uniforms("model", model, "color", point_light_color);
+            normals.set_uniforms("model", model, "color", warm_orange);
             sponza.draw(normals);
         }
 
@@ -389,7 +454,7 @@ int main() {
             program.use();
             program.set_uniform("model", model);
             lamp.use();
-            lamp.set_uniforms("model", model, "color", point_light_color);
+            lamp.set_uniforms("model", model, "color", warm_orange);
             nanosuit.draw_outlined(program, lamp);
         }
 
@@ -405,19 +470,33 @@ int main() {
         }
 
         // draw light placholders
-        glDisable(GL_CULL_FACE);
-        for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
+        if (!is_day) {
+            glDisable(GL_CULL_FACE);
+            for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, point_light_pos[i]);
+                model = glm::scale(model, glm::vec3(0.2f));
+
+                lamp.use();
+                lamp.set_uniforms("model", model, "color", warm_orange);
+                lamp_vao.use();
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+            }
+            glEnable(GL_CULL_FACE);
+        } else {
+            glDisable(GL_CULL_FACE);
+
             glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, point_light_pos[i]);
-            model = glm::scale(model, glm::vec3(0.2f));
+            model = glm::translate(model, -sunlight_dir * 900.0f);
+            model = glm::scale(model, glm::vec3(5.0f));
 
             lamp.use();
-            lamp.set_uniforms("model", model, "color", point_light_color);
-
+            lamp.set_uniforms("model", model, "color", sunlight);
             lamp_vao.use();
             glDrawArrays(GL_TRIANGLES, 0, 36);
+
+            glEnable(GL_CULL_FACE);
         }
-        glEnable(GL_CULL_FACE);
 
         // draw magicube
         if (draw_magicube) {
@@ -437,8 +516,8 @@ int main() {
         glDepthMask(GL_FALSE);
         glDisable(GL_CULL_FACE);
         sky.use();
-        sky.set_uniforms("view", glm::mat4(glm::mat3(view)), "projection", projection, "tex", 0);
-        star_map.activate(GL_TEXTURE0);
+        sky.set_uniforms("view", glm::mat4(glm::mat3(view)), "projection", projection, "tex", 0, "is_day", true);
+        skybox->activate(GL_TEXTURE0);
         sky_vao.use();
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glDepthMask(GL_TRUE);
@@ -446,18 +525,18 @@ int main() {
 
         // post-processing
         glBindFramebuffer(GL_READ_FRAMEBUFFER, ms_fb);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pp_fb);
         glDrawBuffer(GL_BACK);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         post.use();
         post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "use_gamma", use_gamma, "gamma", gamma_strength);
         post_vao.use();
         glDisable(GL_DEPTH_TEST);
-        glBindTexture(GL_TEXTURE_2D, tex_color_buf);
+        glBindTexture(GL_TEXTURE_2D, pp_color_buf);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glEnable(GL_DEPTH_TEST);
 
