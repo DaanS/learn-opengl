@@ -309,7 +309,7 @@ int main() {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    unsigned int const shadow_size{4096};
+    unsigned int const shadow_size{8192};
 
     GLuint depth_fb;
     glGenFramebuffers(1, &depth_fb);
@@ -319,12 +319,14 @@ int main() {
     glGenTextures(1, &depth_buf);
     glBindTexture(GL_TEXTURE_2D, depth_buf);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, shadow_size, shadow_size, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
     float border_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_GREATER);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_buf, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glDrawBuffer(GL_NONE);
@@ -343,6 +345,11 @@ int main() {
 
     while (window.running) {
         window.handle_events();
+
+        static float prev_time = window.get_time();
+        float cur_time = window.get_time();
+        std::cout << cur_time - prev_time << std::endl;
+        prev_time = cur_time;
 
         glEnable(GL_MULTISAMPLE);
         glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
@@ -394,6 +401,7 @@ int main() {
         glm::mat4 model;
 
         // TODO find a better place/way to render this cubemap
+        // TODO render the skybox to the cubemap as well
         if (draw_magicube && first) {
             env_map = make_cubemap(glm::vec3(10.0f, 25.0f, 0.0f), 1024, program, vp_ubo, {&sponza});
             first = false;

@@ -80,27 +80,28 @@ uniform point_light_type point_lights[POINT_LIGHT_COUNT];
 uniform spot_light_type spot_light;
 
 uniform material_type material;
-uniform sampler2D shadow_map;
+uniform sampler2DShadow shadow_map;
 
 float shadow_strength(vec4 frag_pos_light_space, vec3 normal, vec3 light_dir) {
+    float bias = clamp(0.001 * tan(acos(dot(normalize(frag_normal), light_dir))), 0, 0.005);
+
     vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
     proj_coords = proj_coords * 0.5 + 0.5;
+    proj_coords.z -= bias;
 
     if (proj_coords.z > 1.0) return 0.0;
 
-    float bias = max(0.005 * (1.0 - dot(normalize(frag_normal), light_dir)), 0.0005);
-
     float shadow = 0.0;
+
     vec2 texel_size = 1.0 / textureSize(shadow_map, 0);
-    int dir_sample_size = 3;
-    int dir_ext = dir_sample_size / 2;
-    for (int x = -dir_ext; x <= dir_ext; ++x) {
-        for (int y = -dir_ext; y <= dir_ext; ++y) {
-            float closest_depth = texture(shadow_map, proj_coords.xy + vec2(x, y) * texel_size).r;
-            shadow += (proj_coords.z - bias > closest_depth ? 1.0 : 0.0);
-        }
+    vec2 offset = vec2(lessThan(fract((gl_FragCoord.xy - 0.5) * 0.5), vec2(0.25)));
+    offset.y += offset.x;
+    if (offset.y > 1.1) offset.y = 0; 
+    for (int i = 0; i < 16; ++i) {
+        vec2 sample = vec2(-3.5 + 2.0 * (i % 4), -3.5 + 2.0 * (i / 4));
+        shadow += texture(shadow_map, proj_coords + vec3((offset + sample) * texel_size, 0));
     }
-    shadow /= dir_sample_size * dir_sample_size;
+    shadow /= 16.0;
 
     return shadow;
 }
@@ -179,6 +180,4 @@ void main() {
     result += calc_spot_light(spot_light);
 
     frag_color = vec4(result, 1.0);
-
-    //frag_color = vec4(deb, 1.0);
 }
