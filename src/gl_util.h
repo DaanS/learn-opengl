@@ -18,6 +18,7 @@ cubemap make_cubemap(glm::vec3 pos, size_t size, shader_program const& program, 
         glm::vec3( 0.0f,  0.0f,  1.0f),
         glm::vec3( 0.0f,  0.0f, -1.0f)
     };
+
     glm::vec3 ups[6] = {
         glm::vec3( 0.0f, -1.0f,  0.0f),
         glm::vec3( 0.0f, -1.0f,  0.0f),
@@ -26,6 +27,8 @@ cubemap make_cubemap(glm::vec3 pos, size_t size, shader_program const& program, 
         glm::vec3( 0.0f, -1.0f,  0.0f),
         glm::vec3( 0.0f, -1.0f,  0.0f)
     };
+
+    program.use();
     program.set_uniform("view_pos", pos);
     glm::mat4 cube_proj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 1000.0f);
     glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
@@ -39,7 +42,7 @@ cubemap make_cubemap(glm::vec3 pos, size_t size, shader_program const& program, 
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(cube_view));
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, map.id, 0);
         glViewport(0, 0, 1024, 1024);
-        for (auto model: models) model->draw(program);
+        for (auto model : models) model->draw(program);
         glClear(GL_DEPTH_BUFFER_BIT);
     }
 

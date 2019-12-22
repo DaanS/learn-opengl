@@ -434,15 +434,6 @@ int main() {
 
         glm::mat4 model;
 
-        // TODO find a better place/way to render this cubemap
-        // TODO render the skybox to the cubemap as well
-        if (draw_magicube && first) {
-            env_map = make_cubemap(glm::vec3(10.0f, 25.0f, 0.0f), 1024, program, vp_ubo, {&sponza});
-            first = false;
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
-            glViewport(0, 0, width, height);
-        }
-
         program.set_uniform("view_pos", camera_pos);
         program.set_uniform("camera_dir", camera_front);
 
@@ -463,52 +454,65 @@ int main() {
         model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
         model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
 
-        // draw directional shadow map
-        depth.use();
-        depth.set_uniforms("light_space", light_space, "model", model);
-        glViewport(0, 0, shadow_size, shadow_size);
-        glBindFramebuffer(GL_FRAMEBUFFER, depth_fb);
-        glClear(GL_DEPTH_BUFFER_BIT);
-        sponza.draw(depth);
-        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-        glViewport(0, 0, width, height);
-
-        // draw omni-directional shadow map
-        glm::mat4 omni_projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 400.0f);
-        glViewport(0, 0, pos_shadow_size, pos_shadow_size);
-        glBindFramebuffer(GL_FRAMEBUFFER, depth_cube_fb);
-        for (size_t light_idx = 0; light_idx < POINT_LIGHT_COUNT; ++light_idx) {
-            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depth_cube_buf[light_idx], 0);
+        // TODO find a better place/way to render these cubemaps
+        if (first) {
+            // draw directional shadow map
+            depth.use();
+            depth.set_uniforms("light_space", light_space, "model", model);
+            glViewport(0, 0, shadow_size, shadow_size);
+            glBindFramebuffer(GL_FRAMEBUFFER, depth_fb);
             glClear(GL_DEPTH_BUFFER_BIT);
-            std::array<glm::mat4, 6> omni_views{
-                glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)),
-                glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)),
-                glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)),
-                glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)),
-                glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)),
-                glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0))
-            };
-            std::array<glm::mat4, omni_views.size()> omni_transforms;
-            depth_cube.use();
-            for (size_t i = 0; i < omni_views.size(); ++i) {
-                omni_transforms[i] = omni_projection * omni_views[i];
-                depth_cube.set_uniform("shadow_transforms[" + std::to_string(i) + "]", omni_transforms[i]);
+            sponza.draw(depth);
+            glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
+            glViewport(0, 0, width, height);
+
+            glActiveTexture(GL_TEXTURE6);
+            glBindTexture(GL_TEXTURE_2D, depth_buf);
+
+            // draw omni-directional shadow map
+            glm::mat4 omni_projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 400.0f);
+            glViewport(0, 0, pos_shadow_size, pos_shadow_size);
+            glBindFramebuffer(GL_FRAMEBUFFER, depth_cube_fb);
+            for (size_t light_idx = 0; light_idx < POINT_LIGHT_COUNT; ++light_idx) {
+                glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depth_cube_buf[light_idx], 0);
+                glClear(GL_DEPTH_BUFFER_BIT);
+                std::array<glm::mat4, 6> omni_views{
+                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)),
+                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)),
+                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)),
+                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)),
+                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)),
+                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0))
+                };
+                std::array<glm::mat4, omni_views.size()> omni_transforms;
+                depth_cube.use();
+                for (size_t i = 0; i < omni_views.size(); ++i) {
+                    omni_transforms[i] = omni_projection * omni_views[i];
+                    depth_cube.set_uniform("shadow_transforms[" + std::to_string(i) + "]", omni_transforms[i]);
+                }
+                depth_cube.set_uniforms("far", 1000.0f, "light_pos", point_light_pos[light_idx], "model", model);
+                sponza.draw(depth_cube);
             }
-            depth_cube.set_uniforms("far", 1000.0f, "light_pos", point_light_pos[light_idx], "model", model);
-            sponza.draw(depth_cube);
+            glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
+            glViewport(0, 0, width, height);
+
+            for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
+                glActiveTexture(GL_TEXTURE7 + i);
+                glBindTexture(GL_TEXTURE_CUBE_MAP, depth_cube_buf[i]);
+                glActiveTexture(GL_TEXTURE0);
+            }
+
+            // TODO render the skybox to the cubemap as well
+            program.use();
+            program.set_uniforms("far", 1000.0f, "light_space", light_space, "model", model);
+            env_map = make_cubemap(glm::vec3(10.0f, 25.0f, 0.0f), 1024, program, vp_ubo, {&sponza});
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
+            glViewport(0, 0, width, height);
         }
-        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-        glViewport(0, 0, width, height);
 
         // draw room
         program.use();
-        glActiveTexture(GL_TEXTURE6);
-        glBindTexture(GL_TEXTURE_2D, depth_buf);
-        for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-            glActiveTexture(GL_TEXTURE7 + i);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, depth_cube_buf[i]);
-        }
-        program.set_uniforms("far", 1000.0f, "shadow_map", 6, "light_space", light_space, "model", model);
+        program.set_uniforms("far", 1000.0f, "light_space", light_space, "model", model);
         sponza.draw(program);
 
         // draw hair
@@ -614,6 +618,8 @@ int main() {
         glEnable(GL_DEPTH_TEST);
 
         window.swap_buffer();
+
+        if (first) first = false;
     }
 
     return 0;
