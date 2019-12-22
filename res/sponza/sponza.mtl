@@ -228,7 +228,7 @@ newmtl flagpole
 	map_Ks textures\sponza_flagpole_spec.png
 
 newmtl fabric_e
-	Ns 0.1000
+	Ns 40.0000
 	Ni 1.000
 	d 1.0000
 	Tr 0.0000
@@ -243,7 +243,7 @@ newmtl fabric_e
 	map_Ks textures\sponza_fabric_spec.png
 
 newmtl fabric_d
-	Ns 0.1000
+	Ns 40.0000
 	Ni 1.000
 	d 1.0000
 	Tr 0.0000
@@ -258,7 +258,7 @@ newmtl fabric_d
 	map_Ks textures\sponza_fabric_spec.png
 
 newmtl fabric_a
-	Ns 0.1000
+	Ns 40.0000
 	Ni 1.000
 	d 1.0000
 	Tr 0.0000
@@ -273,7 +273,7 @@ newmtl fabric_a
 	map_Ks textures\sponza_fabric_spec.png
 
 newmtl fabric_g
-	Ns 0.1000
+	Ns 40.0000
 	Ni 1.0000
 	d 1.0000
 	Tr 0.0000
@@ -288,7 +288,7 @@ newmtl fabric_g
 	map_Ks textures\sponza_curtain_spec_05.png
 
 newmtl fabric_c
-	Ns 0.1000
+	Ns 40.0000
 	Ni 1.0000
 	d 1.0000
 	Tr 0.0000
@@ -303,7 +303,7 @@ newmtl fabric_c
 	map_Ks textures\sponza_curtain_spec_05.png
 
 newmtl fabric_f
-	Ns 0.1000
+	Ns 40.0000
 	Ni 1.0000
 	d 1.0000
 	Tr 0.0000

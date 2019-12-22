@@ -6,6 +6,8 @@ struct dir_light_type {
     vec3 ambient;
     vec3 diffuse;
     vec3 specular;
+
+    sampler2DShadow shadow_map;
 };
 
 struct point_light_type {
@@ -18,6 +20,8 @@ struct point_light_type {
     vec3 ambient;
     vec3 diffuse;
     vec3 specular;
+
+    samplerCubeShadow shadow_cube;
 };
 
 struct spot_light_type {
@@ -80,9 +84,10 @@ uniform point_light_type point_lights[POINT_LIGHT_COUNT];
 uniform spot_light_type spot_light;
 
 uniform material_type material;
-uniform sampler2DShadow shadow_map;
 
-float shadow_strength(vec4 frag_pos_light_space, vec3 normal, vec3 light_dir) {
+uniform float far;
+
+float shadow_strength_dir(sampler2DShadow shadow_map, vec3 light_dir) {
     float bias = clamp(0.001 * tan(acos(dot(normalize(frag_normal), light_dir))), 0, 0.005);
 
     vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
@@ -106,7 +111,17 @@ float shadow_strength(vec4 frag_pos_light_space, vec3 normal, vec3 light_dir) {
     return shadow;
 }
 
-vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir, bool use_shadow) {
+float shadow_strength_point(samplerCubeShadow shadow_cube, vec3 frag_pos, vec3 light_pos) {
+    vec3 light_to_frag = frag_pos - light_pos;
+
+    float cur_depth = length(light_to_frag);
+    float bias = 0.001;
+    float shadow = texture(shadow_cube, vec4(frag_pos - light_pos, (cur_depth / far) - bias));
+
+    return shadow;
+}
+
+vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir, float shadow) {
     vec3 normal;
     if (material.has_normal_map) {
         normal = vec3(texture(material.normal, frag_tex_coords));
@@ -129,21 +144,21 @@ vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir, 
 
     vec3 em_color = (material.has_emissive_map ? vec3(texture(material.emissive, frag_tex_coords)) : vec3(0.0));
 
-    float shadow = use_shadow ? shadow_strength(frag_pos_light_space, normal, light_dir) : 0.0f;
-
     return max(em_color, ambient_color + (1.0 - shadow) * (diff_color + spec_color));
 }
 
 vec3 calc_dir_light(dir_light_type light) {
     vec3 light_dir = normalize(-light.dir);
-    vec3 result = calc_base_light(light.ambient, light.diffuse, light.specular, light_dir, true);
+    float shadow = shadow_strength_dir(light.shadow_map, light_dir);
+    vec3 result = calc_base_light(light.ambient, light.diffuse, light.specular, light_dir, shadow);
 
     return result;
 }
 
 vec3 calc_point_light(point_light_type light) {
     vec3 light_dir = normalize(light.pos - frag_pos);
-    vec3 result = calc_base_light(light.ambient, light.diffuse, light.specular, light_dir, false);
+    float shadow = shadow_strength_point(light.shadow_cube, frag_pos, light.pos);
+    vec3 result = calc_base_light(light.ambient, light.diffuse, light.specular, light_dir, shadow);
 
     float dist = length(light.pos - frag_pos);
     float attenuation = 1.0 / (light.constant + light.linear * dist + light.quadratic * dist * dist);
@@ -154,7 +169,7 @@ vec3 calc_point_light(point_light_type light) {
 
 vec3 calc_spot_light(spot_light_type light) {
     vec3 light_dir = normalize(light.pos - frag_pos);
-    vec3 result = calc_base_light(light.ambient, light.diffuse, light.specular, light_dir, false);
+    vec3 result = calc_base_light(light.ambient, light.diffuse, light.specular, light_dir, 0.0);
 
     float dist = length(light.pos - frag_pos);
     float attenuation = 1.0 / (light.constant + light.linear * dist + light.quadratic * dist * dist);
@@ -176,7 +191,9 @@ void main() {
     }
 
     vec3 result = calc_dir_light(dir_light);
+
     for (int i  = 0; i < POINT_LIGHT_COUNT; ++i) result += calc_point_light(point_lights[i]);
+
     result += calc_spot_light(spot_light);
 
     frag_color = vec4(result, 1.0);
