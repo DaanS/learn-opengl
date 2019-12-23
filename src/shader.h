@@ -130,10 +130,10 @@ struct shader_program {
         set_uniform(name.c_str(), std::forward<T>(t));
     }
 
-    void set_uniforms() {}
+    void set_uniforms() const {}
 
     template<typename T, typename... Ts>
-    void set_uniforms(std::string const& name, T t, Ts... ts) {
+    void set_uniforms(std::string const& name, T t, Ts... ts) const {
         set_uniform(name, t);
         set_uniforms(ts...);
     }

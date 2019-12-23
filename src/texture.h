@@ -12,6 +12,7 @@ struct cubemap {
     GLuint id;
 
     cubemap(std::array<const std::string, 6> const & face_paths) {
+        glActiveTexture(GL_TEXTURE0);
         glGenTextures(1, &id);
         glBindTexture(GL_TEXTURE_CUBE_MAP, id);
 
@@ -36,6 +37,7 @@ struct cubemap {
     }
 
     cubemap(size_t size) {
+        glActiveTexture(GL_TEXTURE0);
         glGenTextures(1, &id);
         glBindTexture(GL_TEXTURE_CUBE_MAP, id);
 
@@ -70,6 +72,7 @@ struct cubemap {
     void activate(GLenum unit) {
         glActiveTexture(unit);
         glBindTexture(GL_TEXTURE_CUBE_MAP, id);
+        glActiveTexture(GL_TEXTURE0);
     }
 };
 
@@ -77,6 +80,7 @@ struct texture {
     GLuint id;
 
     texture(char const * path) {
+        glActiveTexture(GL_TEXTURE0);
         glGenTextures(1, &id);
         glBindTexture(GL_TEXTURE_2D, id);
 
@@ -126,6 +130,7 @@ struct texture {
     void activate(GLenum unit) {
         glActiveTexture(unit);
         glBindTexture(GL_TEXTURE_2D, id);
+        glActiveTexture(GL_TEXTURE0);
     }
 };
 

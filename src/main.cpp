@@ -27,6 +27,7 @@ static glm::vec3 camera_pos(0.0f, 25.0f, 0.0f);
 static glm::vec3 camera_front(1.0f, 0.0f, 0.0f);
 static glm::vec3 camera_up(0.0f, 1.0f, 0.0f);
 static float fov = 45.0f;
+static float far = 1000.0f;
 
 static bool draw_hair{false};
 static bool draw_magicube{false};
@@ -35,6 +36,7 @@ static bool draw_outline_suit{false};
 static bool use_spotlight{false};
 static bool use_gamma{true};
 static bool is_day{false};
+static bool light_changed{true};
 static const float gamma_strength{2.2f};
 
 static float point_falloff = 0.0015f;
@@ -98,7 +100,7 @@ struct sdl_window {
                         case SDL_SCANCODE_N: draw_hair = !draw_hair; break;
                         case SDL_SCANCODE_O: draw_outline_suit = !draw_outline_suit; break;
                         case SDL_SCANCODE_P: use_spotlight = !use_spotlight; break;
-                        case SDL_SCANCODE_T: is_day = !is_day; break;
+                        case SDL_SCANCODE_T: is_day = !is_day; light_changed = true; break;
                         case SDL_SCANCODE_KP_MINUS: point_falloff -= point_falloff_delta; std::cout << std::to_string(point_falloff) << std::endl; break;
                         case SDL_SCANCODE_KP_PLUS: point_falloff += point_falloff_delta; std::cout << std::to_string(point_falloff) << std::endl; break;
                         default: break;
@@ -309,59 +311,14 @@ int main() {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    unsigned int const shadow_size{8192};
+    dir_shadow_map dir_shadow{8192};
 
-    GLuint depth_fb;
-    glGenFramebuffers(1, &depth_fb);
-    glBindFramebuffer(GL_FRAMEBUFFER, depth_fb);
-    GLuint depth_buf;
-    glGenTextures(1, &depth_buf);
-    glBindTexture(GL_TEXTURE_2D, depth_buf);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, shadow_size, shadow_size, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    float border_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_GREATER);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_buf, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glDrawBuffer(GL_NONE);
-    glReadBuffer(GL_NONE);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    unsigned int const pos_shadow_size{2048};
-
-    GLuint depth_cube_fb;
-    glGenFramebuffers(1, &depth_cube_fb);
-    glBindFramebuffer(GL_FRAMEBUFFER, depth_cube_fb);
-    GLuint depth_cube_buf[POINT_LIGHT_COUNT];
-    glGenTextures(POINT_LIGHT_COUNT, depth_cube_buf);
-    for (size_t light_idx = 0; light_idx < POINT_LIGHT_COUNT; ++ light_idx) {
-        glBindTexture(GL_TEXTURE_CUBE_MAP, depth_cube_buf[light_idx]);
-        for (size_t face_idx = 0; face_idx < 6; ++face_idx) {
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face_idx, 0, GL_DEPTH_COMPONENT32F, pos_shadow_size, pos_shadow_size, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        }
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_FUNC, GL_GREATER);
-    }
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depth_cube_buf[0], 0);
-    glDrawBuffer(GL_NONE);
-    glReadBuffer(GL_NONE);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    omni_shadow_map omni_shadows[POINT_LIGHT_COUNT]{
+        omni_shadow_map{2048},
+        omni_shadow_map{2048},
+        omni_shadow_map{2048},
+        omni_shadow_map{2048}
+    };
 
     GLuint vp_ubo;
     glGenBuffers(1, &vp_ubo);
@@ -370,7 +327,7 @@ int main() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, vp_ubo);
 
-    cubemap env_map(1024);
+    env_map reflect_map(2048);
     bool first = true;
 
     while (window.running) {
@@ -389,17 +346,23 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glStencilMask(0x00);
 
-        glm::vec3 warm_orange{1.0f, 0.5f, 0.0f};
-        if (use_gamma) warm_orange = glm::pow(warm_orange, glm::vec3(gamma_strength));
-
+        // set up light colors
         glm::vec3 sunlight{1.0f, 0.9f, 0.7f};
         if (use_gamma) sunlight = glm::pow(sunlight, glm::vec3(gamma_strength));
 
         glm::vec3 sunlight_dir{-0.2f, -1.0f, 0.1f};
         sunlight_dir = glm::normalize(sunlight_dir);
 
+        glm::vec3 warm_orange{1.0f, 0.5f, 0.0f};
+        if (use_gamma) warm_orange = glm::pow(warm_orange, glm::vec3(gamma_strength));
+
+        glm::vec3 spot_light_color(1.0f);
+        if (!use_spotlight) spot_light_color = glm::vec3(0.0f);
+        if (use_gamma) spot_light_color = glm::pow(spot_light_color, glm::vec3(gamma_strength));
+
         program.use();
 
+        // set up day/night colors and skybox
         cubemap* skybox = &sky_map;
         glm::vec3 point_light_color{warm_orange};
         glm::vec3 sunlight_color{sunlight};
@@ -415,104 +378,74 @@ int main() {
             skybox = &star_map;
         }
 
+        // set up lights
         light dir_light{"dir_light", glm::vec3(0.0f), sunlight_dir, sunlight_color, sunlight_strength.x, sunlight_strength.y, sunlight_strength.z, 0.0f, 0.0f, 0.0f};
         dir_light.setup(program);
-        program.set_uniform("dir_light.shadow_map", 6);
 
         for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
             light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.001f, 0.8f, 1.0f, 0.0f, 0.0f, point_falloff};
             point_light.setup(program);
-            program.set_uniform("point_lights[" + std::to_string(i) + "].shadow_cube", static_cast<int>(7 + i));
         }
 
-        glm::vec3 spot_light_color(1.0f);
-        if (!use_spotlight) spot_light_color = glm::vec3(0.0f);
-        if (use_gamma) spot_light_color = glm::pow(spot_light_color, glm::vec3(gamma_strength));
         light spot_light{"spot_light", camera_pos, camera_front, spot_light_color, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.03f};
         spot_light.setup(program);
         program.set_uniforms("spot_light.cutoff", glm::cos(glm::radians(12.5f)), "spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
 
-        glm::mat4 model;
-
-        program.set_uniform("view_pos", camera_pos);
-        program.set_uniform("camera_dir", camera_front);
-
+        // set up matrices
         glm::mat4 light_projection = glm::ortho(-350.0f, 420.0f, -230.0f, 250.0f, 10.0f, 600.0f);
         glm::mat4 light_view = glm::lookAt(-sunlight_dir * 500.0f, glm::vec3(0.0f), glm::vec3(0.2f, 1.0f, 0.0f));
         glm::mat4 light_space = light_projection * light_view;
 
-        glm::mat4 projection = glm::perspective(glm::radians(fov), (float) width / (float) height, 0.1f, 1000.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(fov), (float) width / (float) height, 0.1f, far);
         glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
-
-        glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(view));
-        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(projection));
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        glm::mat4 model;
 
         // prepare room
         model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
         model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
 
-        // TODO find a better place/way to render these cubemaps
-        if (first) {
-            // draw directional shadow map
-            depth.use();
-            depth.set_uniforms("light_space", light_space, "model", model);
-            glViewport(0, 0, shadow_size, shadow_size);
-            glBindFramebuffer(GL_FRAMEBUFFER, depth_fb);
-            glClear(GL_DEPTH_BUFFER_BIT);
-            sponza.draw(depth);
-            glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-            glViewport(0, 0, width, height);
+        program.use();
+        program.set_uniforms("far", far, "light_space", light_space, "view_pos", camera_pos, "model", model);
 
-            glActiveTexture(GL_TEXTURE6);
-            glBindTexture(GL_TEXTURE_2D, depth_buf);
+        // TODO find a better place/way to render these cubemaps
+        if (first || light_changed) {
+            // draw directional shadow map
+            dir_shadow.render(depth, light_space, {&sponza}, {model});
 
             // draw omni-directional shadow map
-            glm::mat4 omni_projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 400.0f);
-            glViewport(0, 0, pos_shadow_size, pos_shadow_size);
-            glBindFramebuffer(GL_FRAMEBUFFER, depth_cube_fb);
-            for (size_t light_idx = 0; light_idx < POINT_LIGHT_COUNT; ++light_idx) {
-                glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depth_cube_buf[light_idx], 0);
-                glClear(GL_DEPTH_BUFFER_BIT);
-                std::array<glm::mat4, 6> omni_views{
-                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)),
-                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)),
-                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)),
-                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)),
-                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)),
-                    glm::lookAt(point_light_pos[light_idx], point_light_pos[light_idx] + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0))
-                };
-                std::array<glm::mat4, omni_views.size()> omni_transforms;
-                depth_cube.use();
-                for (size_t i = 0; i < omni_views.size(); ++i) {
-                    omni_transforms[i] = omni_projection * omni_views[i];
-                    depth_cube.set_uniform("shadow_transforms[" + std::to_string(i) + "]", omni_transforms[i]);
-                }
-                depth_cube.set_uniforms("far", 1000.0f, "light_pos", point_light_pos[light_idx], "model", model);
-                sponza.draw(depth_cube);
-            }
-            glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-            glViewport(0, 0, width, height);
-
-            for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-                glActiveTexture(GL_TEXTURE7 + i);
-                glBindTexture(GL_TEXTURE_CUBE_MAP, depth_cube_buf[i]);
-                glActiveTexture(GL_TEXTURE0);
+            for (size_t i =0; i < POINT_LIGHT_COUNT; ++i) {
+                omni_shadows[i].render(depth_cube, point_light_pos[i], far, {&sponza}, {model});
             }
 
+            // draw reflection map
             // TODO render the skybox to the cubemap as well
             program.use();
-            program.set_uniforms("far", 1000.0f, "light_space", light_space, "model", model);
-            env_map = make_cubemap(glm::vec3(10.0f, 25.0f, 0.0f), 1024, program, vp_ubo, {&sponza});
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
+            program.set_uniforms("far", far, "light_space", light_space, "model", model);
+            dir_shadow.activate(program, "dir_light.shadow_map", 6);
+            for (size_t i =0; i < POINT_LIGHT_COUNT; ++i) {
+                omni_shadows[i].activate(program, "point_lights[" + std::to_string(i) + "].shadow_cube", 7 + i);
+            }
+            reflect_map.render(glm::vec3(10.0f, 25.0f, 0.0f), program, vp_ubo, {&sponza}, {model});
             glViewport(0, 0, width, height);
+
+            light_changed = false;
         }
 
+        glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(view));
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(projection));
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
         // draw room
+        glViewport(0, 0, width, height);
+        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
         program.use();
-        program.set_uniforms("far", 1000.0f, "light_space", light_space, "model", model);
+        program.set_uniforms("far", far, "light_space", light_space, "view_pos", camera_pos, "model", model);
+        dir_shadow.activate(program, "dir_light.shadow_map", 6);
+        for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
+            omni_shadows[i].activate(program, "point_lights[" + std::to_string(i) + "].shadow_cube", static_cast<int>(7 + i));
+        }
         sponza.draw(program);
 
         // draw hair
@@ -583,7 +516,7 @@ int main() {
             glDisable(GL_CULL_FACE);
             reflect.use();
             reflect.set_uniforms("model", model, "camera_pos", camera_pos);
-            env_map.activate(GL_TEXTURE0);
+            reflect_map.activate(reflect, "tex", 0);
             cube_vao.use();
             glDrawArrays(GL_TRIANGLES, 0, 36);
             glEnable(GL_CULL_FACE);
