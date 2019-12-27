@@ -50,17 +50,17 @@ struct material {
     float refraction; // not yet used
     float opacity_value; // not yet used
 
-    glm::vec3 color_ambient; // not yet used
-    glm::vec3 color_diffuse; // not yet used
+    glm::vec3 color_ambient;
+    glm::vec3 color_diffuse;
     glm::vec3 color_specular;
     glm::vec3 color_emissive; // not yet used
     glm::vec3 color_transport; // not yet used
 
     std::shared_ptr<texture> diffuse;
     std::shared_ptr<texture> specular;
-    std::shared_ptr<texture> emissive; // not yet used
+    std::shared_ptr<texture> emissive;
     std::shared_ptr<texture> bump;
-    std::shared_ptr<texture> normal; // not yet used
+    std::shared_ptr<texture> normal;
     std::shared_ptr<texture> opacity;
 
     static std::unordered_map<std::string, std::shared_ptr<texture>> loaded_textures;
@@ -101,7 +101,7 @@ struct material {
         if (found != loaded_textures.end()) {
             return found->second;
         } else {
-            auto tex = std::make_shared<texture>(tex_path);
+            auto tex = std::make_shared<texture>(tex_path, true, ai_type == aiTextureType_DIFFUSE);
             loaded_textures.emplace(std::pair{tex_path, tex});
             return tex;
         }

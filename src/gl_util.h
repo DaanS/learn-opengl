@@ -102,7 +102,7 @@ struct dir_shadow_map {
 
         glGenFramebuffers(1, &fb);
         glBindFramebuffer(GL_FRAMEBUFFER, fb);
-        
+
         glGenTextures(1, &tex);
         glBindTexture(GL_TEXTURE_2D, tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, size, size, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
@@ -220,5 +220,48 @@ struct omni_shadow_map {
         program.set_uniform(name, unit);
     }
 };
+
+struct framebuffer {
+    GLuint id;
+    GLuint color_buf;
+    GLuint rbo;
+    size_t width;
+    size_t height;
+
+    framebuffer(size_t width, size_t height) : width{width}, height{height} {
+        glGenFramebuffers(1, &id);
+        glBindFramebuffer(GL_FRAMEBUFFER, id);
+
+        glGenTextures(1, &color_buf);
+        glBindTexture(GL_TEXTURE_2D, color_buf);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_buf, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glGenRenderbuffers(1, &rbo);
+        glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    framebuffer(GLuint id, GLuint color_buf, GLuint rbo, size_t width, size_t height) :
+            id{id}, color_buf{color_buf}, rbo{rbo}, width{width}, height{height} {}
+};
+
+void blit_buffer(framebuffer src, framebuffer dst, GLenum buffer) {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, src.id);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst.id);
+    glReadBuffer(buffer);
+    glBlitFramebuffer(0, 0, src.width, src.height, 0, 0, dst.width, dst.height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+}
 
 #endif

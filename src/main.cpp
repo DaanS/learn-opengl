@@ -236,6 +236,8 @@ int main() {
     shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
     shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
     shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
+    shader_program blur({{GL_VERTEX_SHADER, "src/shaders/blur.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blur.frag"}});
+    shader_program blend({{GL_VERTEX_SHADER, "src/shaders/blend.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blend.frag"}});
     shader_program sky({{GL_VERTEX_SHADER, "src/shaders/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/sky.frag"}});
     shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
     shader_program explode({{GL_VERTEX_SHADER, "src/shaders/explode.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/explode.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/explode.frag"}});
@@ -272,11 +274,16 @@ int main() {
     GLuint ms_fb;
     glGenFramebuffers(1, &ms_fb);
     glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-    GLuint ms_color_buf;
-    glGenTextures(1, &ms_color_buf);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf);
-    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGB16F, width, height, GL_TRUE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
+    std::array<GLuint, 2> ms_color_bufs;
+    std::array<GLenum, ms_color_bufs.size()> ms_color_attachments;
+    glGenTextures(ms_color_bufs.size(), ms_color_bufs.data());
+    for (size_t i = 0; i < ms_color_bufs.size(); ++i) {
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, ms_color_bufs[i]);
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGB16F, width, height, GL_TRUE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D_MULTISAMPLE, ms_color_bufs[i], 0);
+        ms_color_attachments[i] = GL_COLOR_ATTACHMENT0 + i;
+    }
+    glDrawBuffers(ms_color_attachments.size(), ms_color_attachments.data());
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
     GLuint ms_rbo;
     glGenRenderbuffers(1, &ms_rbo);
@@ -288,28 +295,29 @@ int main() {
         std::cerr << "ERROR: ms_fb lacking completeness" << std::endl;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    
-    GLuint pp_fb;
-    glGenFramebuffers(1, &pp_fb);
-    glBindFramebuffer(GL_FRAMEBUFFER, pp_fb);
-    GLuint pp_color_buf;
-    glGenTextures(1, &pp_color_buf);
-    glBindTexture(GL_TEXTURE_2D, pp_color_buf);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pp_color_buf, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    GLuint pp_rbo;
-    glGenRenderbuffers(1, &pp_rbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, pp_rbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, pp_rbo);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    std::array<framebuffer, 8> bloom_fbs{
+        framebuffer(width, height),
+        framebuffer(width / 2, height / 2),
+        framebuffer(width / 4, height / 4),
+        framebuffer(width / 8, height / 8),
+        framebuffer(width / 16, height / 16),
+        framebuffer(width / 32, height / 32),
+        framebuffer(width / 64, height / 64),
+        framebuffer(width / 128, height / 128)
+    };
+
+    std::array<framebuffer, 7> blend_fbs{
+        framebuffer(width, height),
+        framebuffer(width / 2, height / 2),
+        framebuffer(width / 4, height / 4),
+        framebuffer(width / 8, height / 8),
+        framebuffer(width / 16, height / 16),
+        framebuffer(width / 32, height / 32),
+        framebuffer(width / 64, height / 64)
+    };
+
+    framebuffer pp_fb(width, height);
 
     dir_shadow_map dir_shadow{8192};
 
@@ -370,10 +378,10 @@ int main() {
 
         if (is_day) {
             point_light_color = glm::vec3(0.0f);
-            sunlight_strength = glm::vec3(0.002f, 0.898f, 0.1f);
+            sunlight_strength = glm::vec3(0.002f, 3.0f, 1.0f);
         } else {
             sunlight_color = glm::vec3(1.0f, 12.0f / 14.0f, 13.0f/ 14.0f);
-            sunlight_strength = glm::vec3(0.0002f, 0.0f, 0.0f);
+            sunlight_strength = glm::vec3(0.003f, 0.0f, 0.0f);
 
             skybox = &star_map;
         }
@@ -383,7 +391,7 @@ int main() {
         dir_light.setup(program);
 
         for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-            light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.001f, 0.8f, 1.0f, 0.0f, 0.0f, point_falloff};
+            light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.000f, 0.8f, 1.0f, 0.0f, 0.0f, point_falloff};
             point_light.setup(program);
         }
 
@@ -485,7 +493,7 @@ int main() {
             for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, point_light_pos[i]);
-                model = glm::scale(model, glm::vec3(0.2f));
+                model = glm::scale(model, glm::vec3(1.2f));
 
                 lamp.use();
                 lamp.set_uniforms("model", model, "color", warm_orange);
@@ -498,7 +506,7 @@ int main() {
 
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, -sunlight_dir * 900.0f);
-            model = glm::scale(model, glm::vec3(5.0f));
+            model = glm::scale(model, glm::vec3(15.0f));
 
             lamp.use();
             lamp.set_uniforms("model", model, "color", sunlight);
@@ -535,18 +543,45 @@ int main() {
 
         // post-processing
         glBindFramebuffer(GL_READ_FRAMEBUFFER, ms_fb);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pp_fb);
-        glDrawBuffer(GL_BACK);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pp_fb.id);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
+        framebuffer hack_fb(ms_fb, ms_color_bufs[1], ms_rbo, width, height);
+        blit_buffer(hack_fb, bloom_fbs[0], GL_COLOR_ATTACHMENT1);
+        for (size_t i = 0; i < bloom_fbs.size(); ++i) {
+            blit_buffer(bloom_fbs[i - 1], bloom_fbs[i], GL_COLOR_ATTACHMENT0);
+        }
+
+        for (int i = 6; i >= 0; --i) {
+            glBindFramebuffer(GL_FRAMEBUFFER, blend_fbs[i].id);
+            glViewport(0, 0, blend_fbs[i].width, blend_fbs[i].height);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            blend.use();
+            blend.set_uniforms("large", 0, "small", 1);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, bloom_fbs[i].color_buf);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, (i == 6 ? bloom_fbs[i + 1] : blend_fbs[i + 1]).color_buf);
+            glDisable(GL_DEPTH_TEST);
+            post_vao.use();
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glEnable(GL_DEPTH_TEST);
+        }
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         post.use();
-        post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "use_gamma", use_gamma, "gamma", gamma_strength);
+        post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "use_gamma", use_gamma, "gamma", gamma_strength, "exposure", 1.0f);
+        post.set_uniforms("tex", 0, "bloom", 1);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, blend_fbs[0].color_buf);
         post_vao.use();
         glDisable(GL_DEPTH_TEST);
-        glBindTexture(GL_TEXTURE_2D, pp_color_buf);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, pp_fb.color_buf);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glEnable(GL_DEPTH_TEST);
 

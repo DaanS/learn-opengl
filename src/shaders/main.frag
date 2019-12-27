@@ -74,7 +74,8 @@ in mat3 tbn;
 
 in vec3 deb;
 
-out vec4 frag_color;
+layout (location = 0) out vec4 frag_color;
+layout (location = 1) out vec4 bright_color;
 
 uniform vec3 view_pos;
 
@@ -101,7 +102,7 @@ float shadow_strength_dir(sampler2DShadow shadow_map, vec3 light_dir) {
     vec2 texel_size = 1.0 / textureSize(shadow_map, 0);
     vec2 offset = vec2(lessThan(fract((gl_FragCoord.xy - 0.5) * 0.5), vec2(0.25)));
     offset.y += offset.x;
-    if (offset.y > 1.1) offset.y = 0; 
+    if (offset.y > 1.1) offset.y = 0;
     for (int i = 0; i < 16; ++i) {
         vec2 sample = vec2(-3.5 + 2.0 * (i % 4), -3.5 + 2.0 * (i / 4));
         shadow += texture(shadow_map, proj_coords + vec3((offset + sample) * texel_size, 0));
@@ -191,10 +192,12 @@ void main() {
     }
 
     vec3 result = calc_dir_light(dir_light);
-
     for (int i  = 0; i < POINT_LIGHT_COUNT; ++i) result += calc_point_light(point_lights[i]);
-
     result += calc_spot_light(spot_light);
 
     frag_color = vec4(result, 1.0);
+
+    float brightness = dot(frag_color.rgb, vec3(0.2126, 0.7152, 0.0722));
+    if (brightness > 1.0) bright_color = frag_color;
+    else bright_color = vec4(vec3(0.0), 1.0);
 }
