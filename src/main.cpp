@@ -31,7 +31,7 @@ static float far = 1000.0f;
 
 static bool draw_hair{false};
 static bool draw_magicube{false};
-static bool draw_explodo_suit{false};
+static bool use_bloom{true};
 static bool draw_outline_suit{false};
 static bool use_spotlight{false};
 static bool use_gamma{true};
@@ -94,7 +94,7 @@ struct sdl_window {
                 case SDL_KEYDOWN:
                     switch (event.key.keysym.scancode) {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
-                        case SDL_SCANCODE_B: draw_explodo_suit = !draw_explodo_suit; break;
+                        case SDL_SCANCODE_B: use_bloom = !use_bloom; break;
                         case SDL_SCANCODE_G: use_gamma = !use_gamma; break;
                         case SDL_SCANCODE_M: draw_magicube = !draw_magicube; break;
                         case SDL_SCANCODE_N: draw_hair = !draw_hair; break;
@@ -166,32 +166,6 @@ struct sdl_window {
     }
 };
 
-struct vao {
-    GLuint id;
-    GLuint vbo;
-
-    template<typename T, size_t Len>
-    vao(T (&vertices)[Len], size_t stride, std::initializer_list<std::pair<size_t, size_t>> attribs) {
-        glGenVertexArrays(1, &id);
-        glBindVertexArray(id);
-
-        glGenBuffers(1, &vbo);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-        size_t idx{0};
-        for (auto attrib : attribs) {
-            glVertexAttribPointer(idx, attrib.first, GL_FLOAT, GL_FALSE, stride * sizeof(T), (void *) (attrib.second * sizeof(T)));
-            glEnableVertexAttribArray(idx);
-            ++idx;
-        }
-    }
-
-    void use() {
-        glBindVertexArray(id);
-    }
-};
-
 struct light {
     std::string name;
     glm::vec3 pos;
@@ -236,11 +210,10 @@ int main() {
     shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
     shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
     shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
-    shader_program blur({{GL_VERTEX_SHADER, "src/shaders/blur.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blur.frag"}});
+    shader_program pre_post({{GL_VERTEX_SHADER, "src/shaders/pre_post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pre_post.frag"}});
     shader_program blend({{GL_VERTEX_SHADER, "src/shaders/blend.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blend.frag"}});
     shader_program sky({{GL_VERTEX_SHADER, "src/shaders/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/sky.frag"}});
     shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
-    shader_program explode({{GL_VERTEX_SHADER, "src/shaders/explode.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/explode.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/explode.frag"}});
     shader_program normals({{GL_VERTEX_SHADER, "src/shaders/normals.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/normals.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
     shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
     shader_program depth_cube({{GL_VERTEX_SHADER, "src/shaders/depth_cube.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/depth_cube.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/depth_cube.frag"}});
@@ -269,7 +242,6 @@ int main() {
     vao sky_vao(skybox_vertices, 3, {{3, 0}});
     vao post_vao(post_vertices, 4, {{2, 0}, {2, 2}});
     vao cube_vao(vertices, 8, {{3, 0}, {3, 3}});
-    vao points_vao(point_vertices, 5, {{2, 0}, {3, 2}});
 
     GLuint ms_fb;
     glGenFramebuffers(1, &ms_fb);
@@ -476,17 +448,6 @@ int main() {
             nanosuit.draw_outlined(program, lamp);
         }
 
-        // draw exploding nanosuit
-        if (draw_explodo_suit) {
-            model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(-120.0f, -1.75f, 20.0f));
-            model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f));
-            explode.use();
-            explode.set_uniforms("model", model, "time", window.get_time());
-            nanosuit.draw(explode);
-        }
-
         // draw light placholders
         if (!is_day) {
             glDisable(GL_CULL_FACE);
@@ -541,47 +502,43 @@ int main() {
         glDepthMask(GL_TRUE);
         glEnable(GL_CULL_FACE);
 
-        // post-processing
+        // blit multisample FB to regular FB
         glBindFramebuffer(GL_READ_FRAMEBUFFER, ms_fb);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pp_fb.id);
         glReadBuffer(GL_COLOR_ATTACHMENT0);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-        framebuffer hack_fb(ms_fb, ms_color_bufs[1], ms_rbo, width, height);
-        blit_buffer(hack_fb, bloom_fbs[0], GL_COLOR_ATTACHMENT1);
-        for (size_t i = 0; i < bloom_fbs.size(); ++i) {
+        // extract and downscale bloom
+        pre_post.use();
+        blend.set_uniform("tex", 0);
+        render_to_buffer(pre_post, bloom_fbs[0], {pp_fb.color_buf});
+        for (size_t i = 1; i < bloom_fbs.size(); ++i) {
             blit_buffer(bloom_fbs[i - 1], bloom_fbs[i], GL_COLOR_ATTACHMENT0);
         }
 
-        for (int i = 6; i >= 0; --i) {
-            glBindFramebuffer(GL_FRAMEBUFFER, blend_fbs[i].id);
-            glViewport(0, 0, blend_fbs[i].width, blend_fbs[i].height);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // blur and upscale bloom
+        constexpr static int bloom_levels = 4;
+        for (int i = bloom_levels; i >= 0; --i) {
             blend.use();
-            blend.set_uniforms("large", 0, "small", 1);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, bloom_fbs[i].color_buf);
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, (i == 6 ? bloom_fbs[i + 1] : blend_fbs[i + 1]).color_buf);
-            glDisable(GL_DEPTH_TEST);
-            post_vao.use();
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-            glEnable(GL_DEPTH_TEST);
+            blend.set_uniforms("Large", 0, "small", 1);
+            render_to_buffer(blend, blend_fbs[i], {bloom_fbs[i].color_buf, (i == bloom_levels ? bloom_fbs[i + 1] : blend_fbs[i + 1]).color_buf});
         }
 
+        // render to screen FB
+        // TODO look into temporal AA to reduce bloom shimmer
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         post.use();
         post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "use_gamma", use_gamma, "gamma", gamma_strength, "exposure", 1.0f);
-        post.set_uniforms("tex", 0, "bloom", 1);
+        post.set_uniforms("tex", 0, "bloom", 1, "use_bloom", use_bloom);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, pp_fb.color_buf);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, blend_fbs[0].color_buf);
         post_vao.use();
         glDisable(GL_DEPTH_TEST);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, pp_fb.color_buf);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glEnable(GL_DEPTH_TEST);
 

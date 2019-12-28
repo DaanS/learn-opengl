@@ -145,7 +145,7 @@ vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir, 
 
     vec3 em_color = (material.has_emissive_map ? vec3(texture(material.emissive, frag_tex_coords)) : vec3(0.0));
 
-    return max(em_color, ambient_color + (1.0 - shadow) * (diff_color + spec_color));
+    return em_color + ambient_color + (1.0 - shadow) * (diff_color + spec_color);
 }
 
 vec3 calc_dir_light(dir_light_type light) {
@@ -196,8 +196,4 @@ void main() {
     result += calc_spot_light(spot_light);
 
     frag_color = vec4(result, 1.0);
-
-    float brightness = dot(frag_color.rgb, vec3(0.2126, 0.7152, 0.0722));
-    if (brightness > 1.0) bright_color = frag_color;
-    else bright_color = vec4(vec3(0.0), 1.0);
 }

@@ -5,6 +5,32 @@
 #include "model.h"
 #include "texture.h"
 
+struct vao {
+    GLuint id;
+    GLuint vbo;
+
+    template<typename T, size_t Len>
+    vao(T (&vertices)[Len], size_t stride, std::initializer_list<std::pair<size_t, size_t>> attribs) {
+        glGenVertexArrays(1, &id);
+        glBindVertexArray(id);
+
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+        size_t idx{0};
+        for (auto attrib : attribs) {
+            glVertexAttribPointer(idx, attrib.first, GL_FLOAT, GL_FALSE, stride * sizeof(T), (void *) (attrib.second * sizeof(T)));
+            glEnableVertexAttribArray(idx);
+            ++idx;
+        }
+    }
+
+    void use() {
+        glBindVertexArray(id);
+    }
+};
+
 static const std::array<glm::vec3, 6> targets{
     glm::vec3( 1.0f,  0.0f,  0.0f),
     glm::vec3(-1.0f,  0.0f,  0.0f),
@@ -262,6 +288,33 @@ void blit_buffer(framebuffer src, framebuffer dst, GLenum buffer) {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst.id);
     glReadBuffer(buffer);
     glBlitFramebuffer(0, 0, src.width, src.height, 0, 0, dst.width, dst.height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+}
+
+void render_to_buffer(shader_program const& program, framebuffer dst, std::vector<GLuint> textures) {
+    static float const quad_vertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+        // positions   // texCoords
+        -1.0f,  1.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+
+        -1.0f,  1.0f,  0.0f, 1.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f, 1.0f
+    };
+    vao quad_vao(quad_vertices, 4, {{2, 0}, {2, 2}});
+
+    glBindFramebuffer(GL_FRAMEBUFFER, dst.id);
+    glViewport(0, 0, dst.width, dst.height);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    program.use();
+    for (size_t i = 0; i < textures.size(); ++i) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D, textures[i]);
+    }
+    glDisable(GL_DEPTH_TEST);
+    quad_vao.use();
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glEnable(GL_DEPTH_TEST);
 }
 
 #endif

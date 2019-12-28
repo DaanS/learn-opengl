@@ -9,13 +9,10 @@ uniform sampler2D bloom;
 uniform bool use_gamma;
 uniform float gamma;
 uniform float exposure;
+uniform bool use_bloom;
 
 const float radius = 1.0;
 const float offset = 0.5 * (radius / 450.0);
-
-const float sharpen[9] = float[9](-1, -1, -1, -1, 9, -1, -1, -1, -1);
-const float blur[9] = float[9](1, 2, 1, 2, 4, 2, 1, 2, 1);
-const float edge[9] = float[9](1, 1, 1, 1, -9, 1, 1, 1, 1);
 
 const float weights[] = float[] (0.06136, 0.24477, 0.38774, 0.24477, 0.06136);
 const int kernel_size = 5;
@@ -37,13 +34,8 @@ vec3 bloom_color(vec2 tex_coords) {
 }
 
 void main() {
-    //frag_color = vec4(0.0, 0.0, 0.0, 1.0);
-    //for (int i = 0; i < 9; i++) {
-    //    frag_color += vec4(edge[i] * vec3(texture(tex, frag_tex_coords[i])), 1.0);
-    //}
-
     vec3 color = texture(tex, frag_tex_coords[4]).rgb;
-    color += bloom_color(frag_tex_coords[4]);
+    if (use_bloom) color += bloom_color(frag_tex_coords[4]);
 
     // tone mapping
     color = vec3(1.0) - exp(-color * exposure);
@@ -52,5 +44,5 @@ void main() {
     if (use_gamma) color = pow(color, vec3(1.0 / gamma));
 
     frag_color = vec4(color, 1.0);
-    //frag_color = vec4(bloom_color(frag_tex_coords[4], 0), 1.0);
+    //frag_color = vec4(bloom_color(frag_tex_coords[4]), 1.0);
 }
