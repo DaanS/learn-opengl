@@ -72,10 +72,7 @@ in vec3 frag_normal;
 in vec2 frag_tex_coords;
 in mat3 tbn;
 
-in vec3 deb;
-
-layout (location = 0) out vec4 frag_color;
-layout (location = 1) out vec4 bright_color;
+out vec4 frag_color;
 
 uniform vec3 view_pos;
 

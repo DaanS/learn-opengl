@@ -1,8 +1,7 @@
 #version 330 core
 in vec3 frag_tex_coords;
 
-layout (location = 0) out vec4 frag_color;
-layout (location = 1) out vec4 bright_color;
+out vec4 frag_color;
 
 uniform bool is_day;
 

@@ -208,6 +208,7 @@ int main() {
     constexpr size_t POINT_LIGHT_COUNT = 4;
 
     shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
+    shader_program g_pass({{GL_VERTEX_SHADER, "src/shaders/g_pass.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/g_pass.frag"}});
     shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
     shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
     shader_program pre_post({{GL_VERTEX_SHADER, "src/shaders/pre_post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pre_post.frag"}});
@@ -246,16 +247,11 @@ int main() {
     GLuint ms_fb;
     glGenFramebuffers(1, &ms_fb);
     glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-    std::array<GLuint, 2> ms_color_bufs;
-    std::array<GLenum, ms_color_bufs.size()> ms_color_attachments;
-    glGenTextures(ms_color_bufs.size(), ms_color_bufs.data());
-    for (size_t i = 0; i < ms_color_bufs.size(); ++i) {
-        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, ms_color_bufs[i]);
-        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGB16F, width, height, GL_TRUE);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D_MULTISAMPLE, ms_color_bufs[i], 0);
-        ms_color_attachments[i] = GL_COLOR_ATTACHMENT0 + i;
-    }
-    glDrawBuffers(ms_color_attachments.size(), ms_color_attachments.data());
+    GLuint ms_color_buf;
+    glGenTextures(1, &ms_color_buf);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf);
+    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGB16F, width, height, GL_TRUE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
     GLuint ms_rbo;
     glGenRenderbuffers(1, &ms_rbo);
@@ -263,6 +259,33 @@ int main() {
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, 8, GL_DEPTH24_STENCIL8, width, height);
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ms_rbo);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "ERROR: ms_fb lacking completeness" << std::endl;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    GLuint g_fb;
+    glGenFramebuffers(1, &g_fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
+    std::array<GLuint, 4> g_color_bufs;
+    std::array<GLenum, g_color_bufs.size()> g_color_attachments;
+    glGenTextures(g_color_bufs.size(), g_color_bufs.data());
+    for (size_t i = 0; i < g_color_bufs.size(); ++i) {
+        glBindTexture(GL_TEXTURE_2D, g_color_bufs[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, g_color_bufs[i], 0);
+        g_color_attachments[i] = GL_COLOR_ATTACHMENT0 + i;
+    }
+    glDrawBuffers(g_color_attachments.size(), g_color_attachments.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    GLuint g_rbo;
+    glGenRenderbuffers(1, &g_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, g_rbo);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 8, GL_DEPTH24_STENCIL8, width, height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, g_rbo);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::cerr << "ERROR: ms_fb lacking completeness" << std::endl;
     }
@@ -428,6 +451,18 @@ int main() {
         }
         sponza.draw(program);
 
+
+        // draw room (g-pass)
+        glViewport(0, 0, width, height);
+        glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        g_pass.use();
+        g_pass.set_uniforms("light_space", light_space, "model", model);
+        glDisable(GL_BLEND);
+        sponza.draw(g_pass);
+        glEnable(GL_BLEND);
+        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
+
         // draw hair
         if (draw_hair) {
             normals.use();
@@ -541,6 +576,22 @@ int main() {
         glDisable(GL_DEPTH_TEST);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glEnable(GL_DEPTH_TEST);
+
+        // debug render g-pass
+        //glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        //glViewport(0, 0, width, height);
+        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        //post.use();
+        //post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "use_gamma", use_gamma, "gamma", gamma_strength, "exposure", 1.0f);
+        //post.set_uniforms("tex", 0, "bloom", 1, "use_bloom", false);
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTexture(GL_TEXTURE_2D, g_color_bufs[1]);
+        //glActiveTexture(GL_TEXTURE1);
+        //glBindTexture(GL_TEXTURE_2D, blend_fbs[0].color_buf);
+        //post_vao.use();
+        //glDisable(GL_DEPTH_TEST);
+        //glDrawArrays(GL_TRIANGLES, 0, 6);
+        //glEnable(GL_DEPTH_TEST);
 
         window.swap_buffer();
 
