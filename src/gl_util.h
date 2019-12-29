@@ -26,8 +26,32 @@ struct vao {
         }
     }
 
-    void use() {
+    void use() const {
         glBindVertexArray(id);
+    }
+};
+
+struct light {
+    std::string name;
+    glm::vec3 pos;
+    glm::vec3 dir;
+    glm::vec3 color;
+    float ambient;
+    float diffuse;
+    float specular;
+    float constant;
+    float linear;
+    float quadratic;
+
+    void setup(shader_program const& program) const {
+        program.set_uniform(name + ".pos", pos);
+        program.set_uniform(name + ".dir", dir);
+        program.set_uniform(name + ".ambient", ambient * color);
+        program.set_uniform(name + ".diffuse", diffuse * color);
+        program.set_uniform(name + ".specular", specular * color);
+        program.set_uniform(name + ".constant", constant);
+        program.set_uniform(name + ".linear", linear);
+        program.set_uniform(name + ".quadratic", quadratic);
     }
 };
 
@@ -87,11 +111,9 @@ struct env_map {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    void render(glm::vec3 pos, shader_program const& program, GLuint vp_ubo, std::vector<model*> models, std::vector<glm::mat4> model_transforms) {
+    void render(glm::vec3 pos, GLuint vp_ubo, std::function<void(glm::vec3)> render_func) const {
         glBindFramebuffer(GL_FRAMEBUFFER, fb);
 
-        program.use();
-        program.set_uniform("view_pos", pos);
         glm::mat4 cube_proj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 1000.0f);
         glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
         glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(cube_proj));
@@ -100,17 +122,14 @@ struct env_map {
             glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(cube_view));
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face_idx, tex, 0);
             glViewport(0, 0, size, size);
-            for (size_t model_idx = 0; model_idx < models.size(); ++model_idx) {
-                program.set_uniform("model", model_transforms[model_idx]);
-                models[model_idx]->draw(program);
-            }
+            render_func(pos);
             glClear(GL_DEPTH_BUFFER_BIT);
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    void activate(shader_program const& program, std::string name, int unit) {
+    void activate(shader_program const & program, std::string name, int unit) const {
         glActiveTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_CUBE_MAP, tex);
         glActiveTexture(GL_TEXTURE0);
@@ -153,21 +172,21 @@ struct dir_shadow_map {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    void render(shader_program const& program, glm::mat4 light_space, std::vector<model*> models, std::vector<glm::mat4> model_transforms) {
+    void render(shader_program const & program, glm::mat4 light_space, std::vector<std::pair<model*, glm::mat4>> const & geometry) const {
         program.use();
         program.set_uniform("light_space", light_space);
         glViewport(0, 0, size, size);
         glBindFramebuffer(GL_FRAMEBUFFER, fb);
         glClear(GL_DEPTH_BUFFER_BIT);
-        for (size_t i = 0; i < models.size(); ++i) {
-            program.set_uniform("model", model_transforms[i]);
-            models[i]->draw(program);
+        for (auto && object : geometry) {
+            program.set_uniform("model", object.second);
+            object.first->draw(program);
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    void activate(shader_program const& program, std::string name, int unit) {
+    void activate(shader_program const& program, std::string name, int unit) const {
         glActiveTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_2D, tex);
         glActiveTexture(GL_TEXTURE0);
@@ -211,7 +230,7 @@ struct omni_shadow_map {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    void render(shader_program const& program, glm::vec3 light_pos, float far, std::vector<model*> models, std::vector<glm::mat4> model_transforms) {
+    void render(shader_program const & program, glm::vec3 light_pos, float far, std::vector<std::pair<model*, glm::mat4>> const & geometry) const {
         glm::mat4 omni_projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 400.0f);
         glViewport(0, 0, size, size);
         glBindFramebuffer(GL_FRAMEBUFFER, fb);
@@ -233,13 +252,13 @@ struct omni_shadow_map {
         }
 
         program.set_uniforms("far", far, "light_pos", light_pos);
-        for (size_t i = 0; i < models.size(); ++i) {
-            program.set_uniform("model", model_transforms[i]);
-            models[i]->draw(program);
+        for (auto && object : geometry) {
+            program.set_uniform("model", object.second);
+            object.first->draw(program);
         }
     }
 
-    void activate(shader_program const& program, std::string name, int unit) {
+    void activate(shader_program const & program, std::string name, int unit) const {
         glActiveTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_CUBE_MAP, tex);
         glActiveTexture(GL_TEXTURE0);

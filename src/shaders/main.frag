@@ -80,6 +80,7 @@ uniform dir_light_type dir_light;
 #define POINT_LIGHT_COUNT 4
 uniform point_light_type point_lights[POINT_LIGHT_COUNT];
 uniform spot_light_type spot_light;
+uniform bool use_spotlight;
 
 uniform material_type material;
 
@@ -190,7 +191,7 @@ void main() {
 
     vec3 result = calc_dir_light(dir_light);
     for (int i  = 0; i < POINT_LIGHT_COUNT; ++i) result += calc_point_light(point_lights[i]);
-    result += calc_spot_light(spot_light);
+    if (use_spotlight) result += calc_spot_light(spot_light);
 
     frag_color = vec4(result, 1.0);
 }

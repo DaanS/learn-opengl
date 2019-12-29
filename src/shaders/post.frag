@@ -41,7 +41,7 @@ void main() {
     color = vec3(1.0) - exp(-color * exposure);
 
     // gamma correction
-    if (use_gamma) color = pow(color, vec3(1.0 / gamma));
+    color = pow(color, vec3(1.0 / gamma));
 
     frag_color = vec4(color, 1.0);
     //frag_color = vec4(bloom_color(frag_tex_coords[4]), 1.0);

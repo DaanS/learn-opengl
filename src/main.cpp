@@ -34,7 +34,6 @@ static bool draw_magicube{false};
 static bool use_bloom{true};
 static bool draw_outline_suit{false};
 static bool use_spotlight{false};
-static bool use_gamma{true};
 static bool is_day{false};
 static bool light_changed{true};
 static const float gamma_strength{2.2f};
@@ -95,7 +94,6 @@ struct sdl_window {
                     switch (event.key.keysym.scancode) {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
                         case SDL_SCANCODE_B: use_bloom = !use_bloom; break;
-                        case SDL_SCANCODE_G: use_gamma = !use_gamma; break;
                         case SDL_SCANCODE_M: draw_magicube = !draw_magicube; break;
                         case SDL_SCANCODE_N: draw_hair = !draw_hair; break;
                         case SDL_SCANCODE_O: draw_outline_suit = !draw_outline_suit; break;
@@ -166,29 +164,163 @@ struct sdl_window {
     }
 };
 
-struct light {
-    std::string name;
-    glm::vec3 pos;
-    glm::vec3 dir;
-    glm::vec3 color;
-    float ambient;
-    float diffuse;
-    float specular;
-    float constant;
-    float linear;
-    float quadratic;
+// TODO replace with dir_light.dir
+glm::vec3 const sunlight_dir = glm::normalize(glm::vec3{-0.2f, -1.0f, 0.1f});
 
-    void setup(shader_program& program) {
-        program.set_uniform(name + ".pos", pos);
-        program.set_uniform(name + ".dir", dir);
-        program.set_uniform(name + ".ambient", ambient * color);
-        program.set_uniform(name + ".diffuse", diffuse * color);
-        program.set_uniform(name + ".specular", specular * color);
-        program.set_uniform(name + ".constant", constant);
-        program.set_uniform(name + ".linear", linear);
-        program.set_uniform(name + ".quadratic", quadratic);
+glm::vec3 const gamma_vec = glm::vec3(gamma_strength);
+
+glm::vec3 const sunlight = glm::pow(glm::vec3{1.0f, 0.9f, 0.7f}, gamma_vec);
+glm::vec3 const warm_orange = glm::pow(glm::vec3{1.0f, 0.5f, 0.0f}, gamma_vec);
+glm::vec3 const spot_light_color = glm::pow(glm::vec3(1.0f), gamma_vec);
+
+struct environment {
+    static constexpr size_t point_light_count{4};
+
+    glm::vec3 const point_light_pos[point_light_count] = {
+        glm::vec3(-124.0f, 25.0f, -44.0f),
+        glm::vec3(-124.0f, 25.0f,  29.0f),
+        glm::vec3(  97.5f, 25.0f,  29.0f),
+        glm::vec3(  97.5f, 25.0f, -44.0f)
+    };
+
+    const glm::mat4 light_projection = glm::ortho(-350.0f, 420.0f, -230.0f, 250.0f, 10.0f, 600.0f);
+    const glm::mat4 light_view = glm::lookAt(-sunlight_dir * 500.0f, glm::vec3(0.0f), glm::vec3(0.2f, 1.0f, 0.0f));
+    const glm::mat4 light_space = light_projection * light_view;
+
+    light dir_light;
+    light point_lights[point_light_count];
+    light spot_light;
+
+    cubemap* skybox;
+
+    dir_shadow_map dir_shadow{8192};
+
+    omni_shadow_map omni_shadows[point_light_count]{
+        omni_shadow_map{2048},
+        omni_shadow_map{2048},
+        omni_shadow_map{2048},
+        omni_shadow_map{2048}
+    };
+
+    env_map reflect_map{2048};
+
+    void update(bool is_day, cubemap* skybox) {
+        // set up day/night colors and skybox
+        glm::vec3 point_light_color{warm_orange};
+        glm::vec3 sunlight_color{sunlight};
+        glm::vec3 sunlight_strength;
+
+        if (is_day) {
+            point_light_color = glm::vec3(0.0f);
+            sunlight_strength = glm::vec3(0.002f, 3.0f, 1.0f);
+        } else {
+            sunlight_color = glm::vec3(1.0f, 12.0f / 14.0f, 13.0f/ 14.0f);
+            sunlight_strength = glm::vec3(0.003f, 0.0f, 0.0f);
+        }
+
+        this->skybox = skybox;
+
+        // set up lights
+        dir_light = light{"dir_light", glm::vec3(0.0f), sunlight_dir, sunlight_color, sunlight_strength.x, sunlight_strength.y, sunlight_strength.z, 0.0f, 0.0f, 0.0f};
+
+        for (size_t i = 0; i < point_light_count; ++i) {
+            point_lights[i] = light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.000f, 0.8f, 1.0f, 0.0f, 0.0f, point_falloff};
+        }
+
+        spot_light = light{"spot_light", camera_pos, camera_front, spot_light_color, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.03f};
     }
+
+    void setup(shader_program const& program) const {
+        dir_light.setup(program);
+        for (auto& point_light : point_lights) point_light.setup(program);
+        spot_light.setup(program);
+        program.set_uniforms("spot_light.cutoff", glm::cos(glm::radians(12.5f)), "spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
+    }
+
+    void render_maps(shader_program const& program, GLuint vp_ubo, std::vector<std::pair<model*, glm::mat4>> geometry) const;
 };
+
+void render_scene(environment const & env, glm::vec3 view_pos) {
+    static const shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
+    static const shader_program sky({{GL_VERTEX_SHADER, "src/shaders/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/sky.frag"}});
+    static const shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
+
+    static const model sponza{"res/sponza/sponza.obj"};
+    static const vao sky_vao(vertices, 8, {{3, 0}});
+    static const vao lamp_vao(vertices, 8, {{3, 0}});
+
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
+    model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
+
+    // draw room
+    program.use();
+    env.setup(program);
+    program.set_uniforms("use_spotlight", use_spotlight, "far", far, "light_space", env.light_space, "view_pos", view_pos, "model", model);
+    env.dir_shadow.activate(program, "dir_light.shadow_map", 6);
+    for (size_t i = 0; i < env.point_light_count; ++i) {
+        env.omni_shadows[i].activate(program, "point_lights[" + std::to_string(i) + "].shadow_cube", static_cast<int>(7 + i));
+    }
+    sponza.draw(program);
+
+    // draw skybox
+    sky.use();
+    model = glm::translate(glm::mat4(1.0f), view_pos);
+    sky.set_uniforms("model", model, "tex", 0, "is_day", true);
+    env.skybox->activate(GL_TEXTURE0);
+    sky_vao.use();
+    glDepthMask(GL_FALSE);
+    glCullFace(GL_FRONT);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    glCullFace(GL_BACK);
+    glDepthMask(GL_TRUE);
+
+    // draw light placeholders
+    if (!is_day) {
+        for (size_t i = 0; i < env.point_light_count; ++i) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, env.point_light_pos[i]);
+            model = glm::scale(model, glm::vec3(1.2f));
+
+            lamp.use();
+            lamp.set_uniforms("model", model, "color", warm_orange);
+            lamp_vao.use();
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+    } else {
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, -sunlight_dir * 900.0f);
+        model = glm::scale(model, glm::vec3(15.0f));
+
+        lamp.use();
+        lamp.set_uniforms("model", model, "color", sunlight);
+        lamp_vao.use();
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+    }
+}
+
+void environment::render_maps(shader_program const& program, GLuint vp_ubo, std::vector<std::pair<model*, glm::mat4>> geometry) const {
+    static const shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
+    static const shader_program depth_cube({{GL_VERTEX_SHADER, "src/shaders/depth_cube.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/depth_cube.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/depth_cube.frag"}});
+
+    // draw directional shadow map
+    dir_shadow.render(depth, light_space, geometry);
+
+    // draw omni-directional shadow map
+    for (size_t i =0; i < point_light_count; ++i) {
+        omni_shadows[i].render(depth_cube, point_light_pos[i], far, geometry);
+    }
+
+    // draw reflection map
+    program.use();
+    program.set_uniforms("use_spotlight", false, "far", far, "light_space", light_space, "model", geometry[0].second);
+    dir_shadow.activate(program, "dir_light.shadow_map", 6);
+    for (size_t i =0; i < point_light_count; ++i) {
+        omni_shadows[i].activate(program, "point_lights[" + std::to_string(i) + "].shadow_cube", 7 + i);
+    }
+    reflect_map.render(glm::vec3{10.0f, 25.0f, 0.0f}, vp_ubo, [this](glm::vec3 pos) { render_scene(*this, pos); });
+    glViewport(0, 0, width, height);
+}
 
 int main() {
     sdl_window window(width, height, "LearnOpenGL");
@@ -198,26 +330,18 @@ int main() {
         return -1;
     }
 
-    glm::vec3 point_light_pos[] = {
-        glm::vec3(-124.0f, 25.0f, -44.0f),
-        glm::vec3(-124.0f, 25.0f,  29.0f),
-        glm::vec3(  97.5f, 25.0f,  29.0f),
-        glm::vec3(  97.5f, 25.0f, -44.0f)
-    };
-
-    constexpr size_t POINT_LIGHT_COUNT = 4;
-
     shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
     shader_program g_pass({{GL_VERTEX_SHADER, "src/shaders/g_pass.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/g_pass.frag"}});
     shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
     shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
     shader_program pre_post({{GL_VERTEX_SHADER, "src/shaders/pre_post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pre_post.frag"}});
     shader_program blend({{GL_VERTEX_SHADER, "src/shaders/blend.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blend.frag"}});
-    shader_program sky({{GL_VERTEX_SHADER, "src/shaders/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/sky.frag"}});
     shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
     shader_program normals({{GL_VERTEX_SHADER, "src/shaders/normals.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/normals.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
-    shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
-    shader_program depth_cube({{GL_VERTEX_SHADER, "src/shaders/depth_cube.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/depth_cube.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/depth_cube.frag"}});
+
+    static const shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
+    static const shader_program depth_cube({{GL_VERTEX_SHADER, "src/shaders/depth_cube.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/depth_cube.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/depth_cube.frag"}});
+    static const shader_program sky({{GL_VERTEX_SHADER, "src/shaders/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/sky.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
@@ -239,8 +363,6 @@ int main() {
 
     glEnable(GL_MULTISAMPLE);
 
-    vao lamp_vao(vertices, 8, {{3, 0}});
-    vao sky_vao(skybox_vertices, 3, {{3, 0}});
     vao post_vao(post_vertices, 4, {{2, 0}, {2, 2}});
     vao cube_vao(vertices, 8, {{3, 0}, {3, 3}});
 
@@ -314,14 +436,7 @@ int main() {
 
     framebuffer pp_fb(width, height);
 
-    dir_shadow_map dir_shadow{8192};
-
-    omni_shadow_map omni_shadows[POINT_LIGHT_COUNT]{
-        omni_shadow_map{2048},
-        omni_shadow_map{2048},
-        omni_shadow_map{2048},
-        omni_shadow_map{2048}
-    };
+    environment env;
 
     GLuint vp_ubo;
     glGenBuffers(1, &vp_ubo);
@@ -330,7 +445,6 @@ int main() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, vp_ubo);
 
-    env_map reflect_map(2048);
     bool first = true;
 
     while (window.running) {
@@ -349,50 +463,10 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glStencilMask(0x00);
 
-        // set up light colors
-        glm::vec3 sunlight{1.0f, 0.9f, 0.7f};
-        if (use_gamma) sunlight = glm::pow(sunlight, glm::vec3(gamma_strength));
-
-        glm::vec3 sunlight_dir{-0.2f, -1.0f, 0.1f};
-        sunlight_dir = glm::normalize(sunlight_dir);
-
-        glm::vec3 warm_orange{1.0f, 0.5f, 0.0f};
-        if (use_gamma) warm_orange = glm::pow(warm_orange, glm::vec3(gamma_strength));
-
-        glm::vec3 spot_light_color(1.0f);
-        if (!use_spotlight) spot_light_color = glm::vec3(0.0f);
-        if (use_gamma) spot_light_color = glm::pow(spot_light_color, glm::vec3(gamma_strength));
-
         program.use();
 
-        // set up day/night colors and skybox
-        cubemap* skybox = &sky_map;
-        glm::vec3 point_light_color{warm_orange};
-        glm::vec3 sunlight_color{sunlight};
-        glm::vec3 sunlight_strength;
-
-        if (is_day) {
-            point_light_color = glm::vec3(0.0f);
-            sunlight_strength = glm::vec3(0.002f, 3.0f, 1.0f);
-        } else {
-            sunlight_color = glm::vec3(1.0f, 12.0f / 14.0f, 13.0f/ 14.0f);
-            sunlight_strength = glm::vec3(0.003f, 0.0f, 0.0f);
-
-            skybox = &star_map;
-        }
-
-        // set up lights
-        light dir_light{"dir_light", glm::vec3(0.0f), sunlight_dir, sunlight_color, sunlight_strength.x, sunlight_strength.y, sunlight_strength.z, 0.0f, 0.0f, 0.0f};
-        dir_light.setup(program);
-
-        for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-            light point_light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.000f, 0.8f, 1.0f, 0.0f, 0.0f, point_falloff};
-            point_light.setup(program);
-        }
-
-        light spot_light{"spot_light", camera_pos, camera_front, spot_light_color, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.03f};
-        spot_light.setup(program);
-        program.set_uniforms("spot_light.cutoff", glm::cos(glm::radians(12.5f)), "spot_light.outer_cutoff", glm::cos(glm::radians(15.0f)));
+        env.update(is_day, is_day ? &sky_map : &star_map);
+        env.setup(program);
 
         // set up matrices
         glm::mat4 light_projection = glm::ortho(-350.0f, 420.0f, -230.0f, 250.0f, 10.0f, 600.0f);
@@ -409,28 +483,11 @@ int main() {
         model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
 
         program.use();
-        program.set_uniforms("far", far, "light_space", light_space, "view_pos", camera_pos, "model", model);
+        program.set_uniforms("use_spotlight", use_spotlight, "far", far, "light_space", light_space, "view_pos", camera_pos, "model", model);
 
         // TODO find a better place/way to render these cubemaps
         if (first || light_changed) {
-            // draw directional shadow map
-            dir_shadow.render(depth, light_space, {&sponza}, {model});
-
-            // draw omni-directional shadow map
-            for (size_t i =0; i < POINT_LIGHT_COUNT; ++i) {
-                omni_shadows[i].render(depth_cube, point_light_pos[i], far, {&sponza}, {model});
-            }
-
-            // draw reflection map
-            // TODO render the skybox to the cubemap as well
-            program.use();
-            program.set_uniforms("far", far, "light_space", light_space, "model", model);
-            dir_shadow.activate(program, "dir_light.shadow_map", 6);
-            for (size_t i =0; i < POINT_LIGHT_COUNT; ++i) {
-                omni_shadows[i].activate(program, "point_lights[" + std::to_string(i) + "].shadow_cube", 7 + i);
-            }
-            reflect_map.render(glm::vec3(10.0f, 25.0f, 0.0f), program, vp_ubo, {&sponza}, {model});
-            glViewport(0, 0, width, height);
+            env.render_maps(program, vp_ubo, {{&sponza, model}});
 
             light_changed = false;
         }
@@ -443,14 +500,7 @@ int main() {
         // draw room
         glViewport(0, 0, width, height);
         glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-        program.use();
-        program.set_uniforms("far", far, "light_space", light_space, "view_pos", camera_pos, "model", model);
-        dir_shadow.activate(program, "dir_light.shadow_map", 6);
-        for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-            omni_shadows[i].activate(program, "point_lights[" + std::to_string(i) + "].shadow_cube", static_cast<int>(7 + i));
-        }
-        sponza.draw(program);
-
+        render_scene(env, camera_pos);
 
         // draw room (g-pass)
         glViewport(0, 0, width, height);
@@ -481,35 +531,7 @@ int main() {
             lamp.use();
             lamp.set_uniforms("model", model, "color", warm_orange);
             nanosuit.draw_outlined(program, lamp);
-        }
-
-        // draw light placholders
-        if (!is_day) {
-            glDisable(GL_CULL_FACE);
-            for (size_t i = 0; i < POINT_LIGHT_COUNT; ++i) {
-                glm::mat4 model = glm::mat4(1.0f);
-                model = glm::translate(model, point_light_pos[i]);
-                model = glm::scale(model, glm::vec3(1.2f));
-
-                lamp.use();
-                lamp.set_uniforms("model", model, "color", warm_orange);
-                lamp_vao.use();
-                glDrawArrays(GL_TRIANGLES, 0, 36);
-            }
-            glEnable(GL_CULL_FACE);
-        } else {
-            glDisable(GL_CULL_FACE);
-
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, -sunlight_dir * 900.0f);
-            model = glm::scale(model, glm::vec3(15.0f));
-
-            lamp.use();
-            lamp.set_uniforms("model", model, "color", sunlight);
-            lamp_vao.use();
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-
-            glEnable(GL_CULL_FACE);
+            nanosuit.draw(program);
         }
 
         // draw magicube
@@ -517,25 +539,12 @@ int main() {
             model = glm::mat4(1.0f);
             model = glm::translate(model, glm::vec3(10.0f, 25.0f, 0.0f));
             model = glm::scale(model, glm::vec3(5.0f));
-            glDisable(GL_CULL_FACE);
             reflect.use();
             reflect.set_uniforms("model", model, "camera_pos", camera_pos);
-            reflect_map.activate(reflect, "tex", 0);
+            env.reflect_map.activate(reflect, "tex", 0);
             cube_vao.use();
             glDrawArrays(GL_TRIANGLES, 0, 36);
-            glEnable(GL_CULL_FACE);
         }
-
-        // draw skybox
-        glDepthMask(GL_FALSE);
-        glDisable(GL_CULL_FACE);
-        sky.use();
-        sky.set_uniforms("view", glm::mat4(glm::mat3(view)), "projection", projection, "tex", 0, "is_day", true);
-        skybox->activate(GL_TEXTURE0);
-        sky_vao.use();
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-        glDepthMask(GL_TRUE);
-        glEnable(GL_CULL_FACE);
 
         // blit multisample FB to regular FB
         glBindFramebuffer(GL_READ_FRAMEBUFFER, ms_fb);
@@ -566,7 +575,7 @@ int main() {
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         post.use();
-        post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "use_gamma", use_gamma, "gamma", gamma_strength, "exposure", 1.0f);
+        post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "gamma", gamma_strength, "exposure", 1.0f);
         post.set_uniforms("tex", 0, "bloom", 1, "use_bloom", use_bloom);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, pp_fb.color_buf);
@@ -582,7 +591,7 @@ int main() {
         //glViewport(0, 0, width, height);
         //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         //post.use();
-        //post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "use_gamma", use_gamma, "gamma", gamma_strength, "exposure", 1.0f);
+        //post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "gamma", gamma_strength, "exposure", 1.0f);
         //post.set_uniforms("tex", 0, "bloom", 1, "use_bloom", false);
         //glActiveTexture(GL_TEXTURE0);
         //glBindTexture(GL_TEXTURE_2D, g_color_bufs[1]);

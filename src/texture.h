@@ -101,7 +101,6 @@ struct texture {
 
         GLenum format = GL_RGBA;
         GLenum internal_format = srgb ? GL_SRGB_ALPHA : GL_RGBA;
-        if (path.find("normal") != std::string::npos) internal_format = GL_RGBA;
         if (path.find("nanosuit") != std::string::npos) internal_format = GL_SRGB_ALPHA;
         glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, GL_UNSIGNED_BYTE, img_data);
         if (filter) glGenerateMipmap(GL_TEXTURE_2D);
