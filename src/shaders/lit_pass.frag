@@ -40,55 +40,28 @@ struct spot_light_type {
     vec3 specular;
 };
 
-struct material_type {
-    float shininess;
-    float refraction;
-    float opacity_value;
-
-    vec3 color_ambient;
-    vec3 color_diffuse;
-    vec3 color_specular;
-    vec3 color_emissive;
-    vec3 color_transport;
-
-    sampler2D diffuse;
-    sampler2D specular;
-    sampler2D emissive;
-    sampler2D bump;
-    sampler2D normal;
-    sampler2D opacity;
-
-    bool has_diffuse_map;
-    bool has_specular_map;
-    bool has_emissive_map;
-    bool has_bump_map;
-    bool has_normal_map;
-    bool has_opacity_map;
-};
-
-in vec3 frag_pos;
-in vec4 frag_pos_light_space;
-in vec3 frag_normal;
-in vec2 frag_tex_coords;
-in mat3 tbn;
-
 out vec4 frag_color;
 
+in vec2 frag_tex_coords;
+
+uniform sampler2D g_bufs[6];
 uniform vec3 view_pos;
+uniform float far;
+uniform mat4 light_space;
 
 uniform dir_light_type dir_light;
 #define POINT_LIGHT_COUNT 4
 uniform point_light_type point_lights[POINT_LIGHT_COUNT];
 uniform spot_light_type spot_light;
 uniform bool use_spotlight;
-
-uniform material_type material;
-
-uniform float far;
+uniform int point_light_count;
 
 float shadow_strength_dir(sampler2DShadow shadow_map, vec3 light_dir) {
-    float bias = clamp(0.001 * tan(acos(dot(normalize(frag_normal), light_dir))), 0, 0.005);
+    vec3 frag_normal = texture(g_bufs[1], frag_tex_coords).rgb;
+    float bias = clamp(0.005 * tan(acos(dot(normalize(frag_normal), light_dir))), 0, 0.005);
 
+    vec3 frag_pos = texture(g_bufs[0], frag_tex_coords).rgb;
+    vec4 frag_pos_light_space = light_space * vec4(frag_pos, 1.0);
     vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
     proj_coords = proj_coords * 0.5 + 0.5;
     proj_coords.z -= bias;
@@ -121,29 +94,26 @@ float shadow_strength_point(samplerCubeShadow shadow_cube, vec3 frag_pos, vec3 l
 }
 
 vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir, float shadow) {
-    vec3 normal;
-    if (material.has_normal_map) {
-        normal = vec3(texture(material.normal, frag_tex_coords));
-        normal = normalize(normal * 2.0 - 1.0);
-        normal = normalize(tbn * normal);
-    } else {
-        normal = normalize(frag_normal);
-    }
-    //return normal * 0.5 + 0.5;
+    vec3 normal = texture(g_bufs[1], frag_tex_coords).rgb;
 
-    vec3 ambient_color = ambient * (material.has_diffuse_map ? vec3(texture(material.diffuse, frag_tex_coords)) : material.color_ambient);
+    vec3 diffuse_src = texture(g_bufs[2], frag_tex_coords).rgb;
+    vec3 ambient_color = ambient * diffuse_src;
 
-    float diff_strength = max(dot(normal, light_dir), 0.0);
-    vec3 diff_color = diff_strength * diffuse * (material.has_diffuse_map ? vec3(texture(material.diffuse, frag_tex_coords)) : material.color_diffuse);
+    float diffuse_strength = max(dot(normal, light_dir), 0.0);
+    vec3 diffuse_color = diffuse_strength * diffuse * diffuse_src;
 
+    vec3 frag_pos = texture(g_bufs[0], frag_tex_coords).rgb;
     vec3 view_dir = normalize(view_pos - frag_pos);
     vec3 halfway_dir = normalize(light_dir + view_dir);
-    float spec_strength = pow(max(dot(normal, halfway_dir), 0.0), 2 * material.shininess);
-    vec3 spec_color = spec_strength * specular * (material.has_specular_map ? vec3(texture(material.specular, frag_tex_coords)) : material.color_specular);
+    float gloss = texture(g_bufs[5], frag_tex_coords).r;
+    float specular_strength = pow(max(dot(normal, halfway_dir), 0.0), 2 * gloss);
+    vec3 specular_src = texture(g_bufs[3], frag_tex_coords).rgb;
+    vec3 specular_color = specular_strength * specular * specular_src;
 
-    vec3 em_color = (material.has_emissive_map ? vec3(texture(material.emissive, frag_tex_coords)) : vec3(0.0));
+    vec3 emissive_src = texture(g_bufs[4], frag_tex_coords).rgb;
+    vec3 em_color = emissive_src;
 
-    return em_color + ambient_color + (1.0 - shadow) * (diff_color + spec_color);
+    return em_color + ambient_color + (1.0 - shadow) * (diffuse_color + specular_color);
 }
 
 vec3 calc_dir_light(dir_light_type light) {
@@ -155,6 +125,7 @@ vec3 calc_dir_light(dir_light_type light) {
 }
 
 vec3 calc_point_light(point_light_type light) {
+    vec3 frag_pos = texture(g_bufs[0], frag_tex_coords).rgb;
     vec3 light_dir = normalize(light.pos - frag_pos);
     float shadow = shadow_strength_point(light.shadow_cube, frag_pos, light.pos);
     vec3 result = calc_base_light(light.ambient, light.diffuse, light.specular, light_dir, shadow);
@@ -167,6 +138,7 @@ vec3 calc_point_light(point_light_type light) {
 }
 
 vec3 calc_spot_light(spot_light_type light) {
+    vec3 frag_pos = texture(g_bufs[0], frag_tex_coords).rgb;
     vec3 light_dir = normalize(light.pos - frag_pos);
     vec3 result = calc_base_light(light.ambient, light.diffuse, light.specular, light_dir, 0.0);
 
@@ -181,16 +153,27 @@ vec3 calc_spot_light(spot_light_type light) {
 }
 
 void main() {
-    if (material.has_opacity_map) {
-        vec4 tex_color = texture(material.opacity, frag_tex_coords);
-        if (tex_color.r < 0.1) discard;
-    } else {
-        vec4 tex_color = texture(material.diffuse, frag_tex_coords);
-        //if (tex_color.a < 0.1) discard;
+    vec3 frag_pos = texture(g_bufs[0], frag_tex_coords).rgb;
+    vec3 frag_normal = texture(g_bufs[1], frag_tex_coords).rgb;
+    vec3 diffuse_src = texture(g_bufs[2], frag_tex_coords).rgb;
+    vec3 specular_src = texture(g_bufs[3], frag_tex_coords).rgb;
+    vec3 emissive_src = texture(g_bufs[4], frag_tex_coords).rgb;
+
+    vec3 lighting = diffuse_src * 0.1;
+    vec3 view_dir = normalize(view_pos - frag_pos);
+    for (int i = 0; i < POINT_LIGHT_COUNT; ++i) {
+        vec3 light_dir = normalize(point_lights[i].pos - frag_pos);
+        vec3 diffuse = max(dot(frag_normal, light_dir), 0.0) * diffuse_src * point_lights[i].diffuse;
+        lighting += diffuse;
     }
 
-    vec3 result = calc_dir_light(dir_light);
-    for (int i = 0; i < POINT_LIGHT_COUNT; ++i) result += calc_point_light(point_lights[i]);
+    frag_color = vec4(lighting, 1.0);
+
+    vec3 result = vec3(0.0);
+    result += calc_dir_light(dir_light);
+    for (int i = 0; i < POINT_LIGHT_COUNT; ++i) {
+        result += calc_point_light(point_lights[i]);
+    }
     if (use_spotlight) result += calc_spot_light(spot_light);
 
     frag_color = vec4(result, 1.0);

@@ -36,10 +36,17 @@ layout (location = 0) out vec3 pos;
 layout (location = 1) out vec3 normal;
 layout (location = 2) out vec3 diffuse;
 layout (location = 3) out vec3 specular;
+layout (location = 4) out vec3 emissive;
+layout (location = 5) out vec3 misc; // r = gloss;
 
 uniform material_type material;
 
 void main() {
+    if (material.has_opacity_map) {
+        vec4 tex_color = texture(material.opacity, frag_tex_coords);
+        if (tex_color.r < 0.1) discard;
+    }
+
     pos = frag_pos;
 
     if (material.has_normal_map) {
@@ -52,4 +59,6 @@ void main() {
 
     diffuse = material.has_diffuse_map ? vec3(texture(material.diffuse, frag_tex_coords)) : material.color_diffuse;
     specular = material.has_specular_map ? vec3(texture(material.specular, frag_tex_coords)) : material.color_specular;
+    emissive = material.has_emissive_map ? vec3(texture(material.emissive, frag_tex_coords)) : material.color_emissive;
+    misc = vec3(material.shininess, 0.0, 0.0);
 }

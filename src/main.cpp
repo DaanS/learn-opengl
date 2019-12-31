@@ -331,17 +331,18 @@ int main() {
     }
 
     shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
-    shader_program g_pass({{GL_VERTEX_SHADER, "src/shaders/g_pass.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/g_pass.frag"}});
     shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
     shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
     shader_program pre_post({{GL_VERTEX_SHADER, "src/shaders/pre_post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pre_post.frag"}});
     shader_program blend({{GL_VERTEX_SHADER, "src/shaders/blend.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blend.frag"}});
     shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
-    shader_program normals({{GL_VERTEX_SHADER, "src/shaders/normals.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/normals.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
 
     static const shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
     static const shader_program depth_cube({{GL_VERTEX_SHADER, "src/shaders/depth_cube.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/depth_cube.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/depth_cube.frag"}});
     static const shader_program sky({{GL_VERTEX_SHADER, "src/shaders/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/sky.frag"}});
+
+    static const shader_program g_pass({{GL_VERTEX_SHADER, "src/shaders/g_pass.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/g_pass.frag"}});
+    static const shader_program lit_pass({{GL_VERTEX_SHADER, "src/shaders/lit_pass.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lit_pass.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
@@ -389,7 +390,7 @@ int main() {
     GLuint g_fb;
     glGenFramebuffers(1, &g_fb);
     glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
-    std::array<GLuint, 4> g_color_bufs;
+    std::array<GLuint, 6> g_color_bufs;
     std::array<GLenum, g_color_bufs.size()> g_color_attachments;
     glGenTextures(g_color_bufs.size(), g_color_bufs.data());
     for (size_t i = 0; i < g_color_bufs.size(); ++i) {
@@ -497,11 +498,6 @@ int main() {
         glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(projection));
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        // draw room
-        glViewport(0, 0, width, height);
-        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-        render_scene(env, camera_pos);
-
         // draw room (g-pass)
         glViewport(0, 0, width, height);
         glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
@@ -513,11 +509,68 @@ int main() {
         glEnable(GL_BLEND);
         glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
 
-        // draw hair
-        if (draw_hair) {
-            normals.use();
-            normals.set_uniforms("model", model, "color", warm_orange);
-            sponza.draw(normals);
+        // light g-pass
+        glBindFramebuffer(GL_FRAMEBUFFER, pp_fb.id);
+        glViewport(0, 0, width, height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        lit_pass.use();
+        env.setup(lit_pass);
+        lit_pass.set_uniforms("light_space", light_space, "far", far, "use_spotlight", use_spotlight, "view_pos", camera_pos);
+        for (size_t i = 0; i < g_color_bufs.size(); ++i) {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D, g_color_bufs[i]);
+            lit_pass.set_uniform("g_bufs[" + std::to_string(i) + "]", static_cast<int>(i));
+        }
+        env.dir_shadow.activate(lit_pass, "dir_light.shadow_map", 6);
+        for (size_t i = 0; i < env.point_light_count; ++i) {
+            env.omni_shadows[i].activate(lit_pass, "point_lights[" + std::to_string(i) + "].shadow_cube", static_cast<int>(7 + i));
+        }
+        post_vao.use();
+        glDisable(GL_DEPTH_TEST);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glEnable(GL_DEPTH_TEST);
+
+        // blit g-pass depth and stencil buffer
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, g_fb);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pp_fb.id);
+        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, pp_fb.id);
+
+        // draw skybox
+        static const vao sky_vao(vertices, 8, {{3, 0}});
+        sky.use();
+        model = glm::translate(glm::mat4(1.0f), camera_pos);
+        sky.set_uniforms("model", model, "tex", 0, "is_day", true);
+        env.skybox->activate(GL_TEXTURE0);
+        sky_vao.use();
+        glDepthMask(GL_FALSE);
+        glCullFace(GL_FRONT);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glCullFace(GL_BACK);
+        glDepthMask(GL_TRUE);
+
+        // draw light placeholders
+        static const vao lamp_vao(vertices, 8, {{3, 0}});
+        if (!is_day) {
+            for (size_t i = 0; i < env.point_light_count; ++i) {
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, env.point_light_pos[i]);
+                model = glm::scale(model, glm::vec3(1.2f));
+
+                lamp.use();
+                lamp.set_uniforms("model", model, "color", warm_orange);
+                lamp_vao.use();
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+            }
+        } else {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, -sunlight_dir * 900.0f);
+            model = glm::scale(model, glm::vec3(15.0f));
+
+            lamp.use();
+            lamp.set_uniforms("model", model, "color", sunlight);
+            lamp_vao.use();
+            glDrawArrays(GL_TRIANGLES, 0, 36);
         }
 
         // draw outlined nanosuit
@@ -545,12 +598,6 @@ int main() {
             cube_vao.use();
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
-
-        // blit multisample FB to regular FB
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, ms_fb);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pp_fb.id);
-        glReadBuffer(GL_COLOR_ATTACHMENT0);
-        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
         // extract and downscale bloom
         pre_post.use();
@@ -585,22 +632,6 @@ int main() {
         glDisable(GL_DEPTH_TEST);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glEnable(GL_DEPTH_TEST);
-
-        // debug render g-pass
-        //glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        //glViewport(0, 0, width, height);
-        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        //post.use();
-        //post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "gamma", gamma_strength, "exposure", 1.0f);
-        //post.set_uniforms("tex", 0, "bloom", 1, "use_bloom", false);
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, g_color_bufs[1]);
-        //glActiveTexture(GL_TEXTURE1);
-        //glBindTexture(GL_TEXTURE_2D, blend_fbs[0].color_buf);
-        //post_vao.use();
-        //glDisable(GL_DEPTH_TEST);
-        //glDrawArrays(GL_TRIANGLES, 0, 6);
-        //glEnable(GL_DEPTH_TEST);
 
         window.swap_buffer();
 
