@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <iterator>
+#include <random>
 #include <vector>
 
 #include <glad/glad.h>
@@ -34,6 +35,7 @@ static bool draw_magicube{false};
 static bool use_bloom{true};
 static bool draw_outline_suit{false};
 static bool use_spotlight{false};
+static bool use_ao{true};
 static bool is_day{false};
 static bool light_changed{true};
 static const float gamma_strength{2.2f};
@@ -94,6 +96,7 @@ struct sdl_window {
                     switch (event.key.keysym.scancode) {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
                         case SDL_SCANCODE_B: use_bloom = !use_bloom; break;
+                        case SDL_SCANCODE_C: use_ao = !use_ao; break;
                         case SDL_SCANCODE_M: draw_magicube = !draw_magicube; break;
                         case SDL_SCANCODE_N: draw_hair = !draw_hair; break;
                         case SDL_SCANCODE_O: draw_outline_suit = !draw_outline_suit; break;
@@ -343,6 +346,9 @@ int main() {
 
     static const shader_program g_pass({{GL_VERTEX_SHADER, "src/shaders/g_pass.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/g_pass.frag"}});
     static const shader_program lit_pass({{GL_VERTEX_SHADER, "src/shaders/lit_pass.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lit_pass.frag"}});
+    static const shader_program ssao({{GL_VERTEX_SHADER, "src/shaders/ssao.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/ssao.frag"}});
+    static const shader_program blur({{GL_VERTEX_SHADER, "src/shaders/blur.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blur.frag"}});
+    static const shader_program view_deb({{GL_VERTEX_SHADER, "src/shaders/view_deb.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/view_deb.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
@@ -398,6 +404,8 @@ int main() {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, g_color_bufs[i], 0);
         g_color_attachments[i] = GL_COLOR_ATTACHMENT0 + i;
     }
@@ -445,6 +453,75 @@ int main() {
     glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, vp_ubo);
+
+    std::uniform_real_distribution<float> random_float(0.0f, 1.0f);
+    std::default_random_engine gen;
+    static constexpr size_t ssao_samples = 64;
+    std::array<glm::vec3, ssao_samples> ssao_kernel;
+    for (size_t i = 0; i < ssao_samples; ++i) {
+        glm::vec3 sample{
+            random_float(gen) * 2.0f - 1.0f,
+            random_float(gen) * 2.0f - 1.0f,
+            random_float(gen)
+        };
+        sample = glm::normalize(sample) * random_float(gen);
+
+        ssao_kernel[i] = sample;
+    }
+
+    static constexpr size_t ssao_noise_samples = 16;
+    std::array<glm::vec3, ssao_noise_samples> ssao_noise;
+    for (size_t i = 0; i < ssao_noise_samples; ++i) {
+        glm::vec3 sample{
+            random_float(gen) * 2.0f - 1.0f,
+            random_float(gen) * 2.0f - 1.0f,
+            0.0f
+        };
+
+        ssao_noise[i] = glm::normalize(sample);
+    }
+
+    GLuint noise_tex;
+    glGenTextures(1, &noise_tex);
+    glBindTexture(GL_TEXTURE_2D, noise_tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, ssao_noise.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    GLuint ssao_fb;
+    glGenFramebuffers(1, &ssao_fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, ssao_fb);
+    GLuint ssao_color_buf;
+    glGenTextures(1, &ssao_color_buf);
+    glBindTexture(GL_TEXTURE_2D, ssao_color_buf);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssao_color_buf, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "ERROR: ssao_fb lacking completeness" << std::endl;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    GLuint ssao_blur_fb;
+    glGenFramebuffers(1, &ssao_blur_fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, ssao_blur_fb);
+    GLuint ssao_blur_color_buf;
+    glGenTextures(1, &ssao_blur_color_buf);
+    glBindTexture(GL_TEXTURE_2D, ssao_blur_color_buf);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssao_blur_color_buf, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "ERROR: ssao_blur_fb lacking completeness" << std::endl;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     bool first = true;
 
@@ -509,22 +586,55 @@ int main() {
         glEnable(GL_BLEND);
         glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
 
-        // light g-pass
-        glBindFramebuffer(GL_FRAMEBUFFER, pp_fb.id);
+        // generate ssao
         glViewport(0, 0, width, height);
+        glBindFramebuffer(GL_FRAMEBUFFER, ssao_fb);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ssao.use();
+        for (size_t i = 0; i < g_color_bufs.size(); ++i) {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D, g_color_bufs[i]);
+            ssao.set_uniform("g_bufs[" + std::to_string(i) + "]", static_cast<int>(i));
+        }
+        static constexpr int noise_tex_idx = g_color_bufs.size();
+        glActiveTexture(GL_TEXTURE0 + noise_tex_idx);
+        glBindTexture(GL_TEXTURE_2D, noise_tex);
+        ssao.set_uniforms("noise", noise_tex_idx);
+        for (size_t i = 0; i < ssao_samples; ++i) {
+            ssao.set_uniform("samples[" + std::to_string(i) + "]", ssao_kernel[i]);
+        }
+        post_vao.use();
+        glDisable(GL_DEPTH_TEST);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glEnable(GL_DEPTH_TEST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // blur ssao
+        blur.use();
+        blur.set_uniform("tex", 0);
+        render_to_buffer(blur, ssao_blur_fb, width, height, {ssao_color_buf});
+
+        // light g-pass
+        glViewport(0, 0, width, height);
+        glBindFramebuffer(GL_FRAMEBUFFER, pp_fb.id);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         lit_pass.use();
         env.setup(lit_pass);
-        lit_pass.set_uniforms("light_space", light_space, "far", far, "use_spotlight", use_spotlight, "view_pos", camera_pos);
+        lit_pass.set_uniforms("light_space", light_space, "far", far, "use_spotlight", use_spotlight, "use_ao", use_ao, "view_pos", camera_pos);
         for (size_t i = 0; i < g_color_bufs.size(); ++i) {
             glActiveTexture(GL_TEXTURE0 + i);
             glBindTexture(GL_TEXTURE_2D, g_color_bufs[i]);
             lit_pass.set_uniform("g_bufs[" + std::to_string(i) + "]", static_cast<int>(i));
         }
-        env.dir_shadow.activate(lit_pass, "dir_light.shadow_map", 6);
+        static constexpr int shadow_tex_idx = g_color_bufs.size();
+        env.dir_shadow.activate(lit_pass, "dir_light.shadow_map", shadow_tex_idx);
         for (size_t i = 0; i < env.point_light_count; ++i) {
-            env.omni_shadows[i].activate(lit_pass, "point_lights[" + std::to_string(i) + "].shadow_cube", static_cast<int>(7 + i));
+            env.omni_shadows[i].activate(lit_pass, "point_lights[" + std::to_string(i) + "].shadow_cube", static_cast<int>(shadow_tex_idx + 1 + i));
         }
+        static constexpr int ssao_tex_idx = shadow_tex_idx + env.point_light_count + 1;
+        glActiveTexture(GL_TEXTURE0 + ssao_tex_idx);
+        glBindTexture(GL_TEXTURE_2D, ssao_blur_color_buf);
+        lit_pass.set_uniform("ssao", ssao_tex_idx);
         post_vao.use();
         glDisable(GL_DEPTH_TEST);
         glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -601,7 +711,7 @@ int main() {
 
         // extract and downscale bloom
         pre_post.use();
-        blend.set_uniform("tex", 0);
+        pre_post.set_uniform("tex", 0);
         render_to_buffer(pre_post, bloom_fbs[0], {pp_fb.color_buf});
         for (size_t i = 1; i < bloom_fbs.size(); ++i) {
             blit_buffer(bloom_fbs[i - 1], bloom_fbs[i], GL_COLOR_ATTACHMENT0);
@@ -611,7 +721,7 @@ int main() {
         constexpr static int bloom_levels = 4;
         for (int i = bloom_levels; i >= 0; --i) {
             blend.use();
-            blend.set_uniforms("Large", 0, "small", 1);
+            blend.set_uniforms("large", 0, "small", 1);
             render_to_buffer(blend, blend_fbs[i], {bloom_fbs[i].color_buf, (i == bloom_levels ? bloom_fbs[i + 1] : blend_fbs[i + 1]).color_buf});
         }
 
@@ -632,6 +742,20 @@ int main() {
         glDisable(GL_DEPTH_TEST);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glEnable(GL_DEPTH_TEST);
+
+        //// DEBUG render for view-space g_bufs
+        //glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        //glViewport(0, 0, width, height);
+        //glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        //view_deb.use();
+        //view_deb.set_uniform("tex", 0);
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTexture(GL_TEXTURE_2D, ssao_color_buf);
+        //post_vao.use();
+        //glDisable(GL_DEPTH_TEST);
+        //glDrawArrays(GL_TRIANGLES, 0, 6);
+        //glEnable(GL_DEPTH_TEST);
 
         window.swap_buffer();
 

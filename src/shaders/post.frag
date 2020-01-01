@@ -44,5 +44,7 @@ void main() {
     color = pow(color, vec3(1.0 / gamma));
 
     frag_color = vec4(color, 1.0);
-    //frag_color = vec4(bloom_color(frag_tex_coords[4]), 1.0);
+
+    //DEBUG
+    //frag_color = vec4(texture(tex, frag_tex_coords[4]).rgb, 1.0);
 }

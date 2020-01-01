@@ -292,6 +292,7 @@ struct framebuffer {
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
         }
@@ -324,6 +325,33 @@ void render_to_buffer(shader_program const& program, framebuffer dst, std::vecto
 
     glBindFramebuffer(GL_FRAMEBUFFER, dst.id);
     glViewport(0, 0, dst.width, dst.height);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    program.use();
+    for (size_t i = 0; i < textures.size(); ++i) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D, textures[i]);
+    }
+    glDisable(GL_DEPTH_TEST);
+    quad_vao.use();
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glEnable(GL_DEPTH_TEST);
+}
+
+void render_to_buffer(shader_program const& program, GLuint id, size_t width, size_t height, std::vector<GLuint> textures) {
+    static float const quad_vertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+        // positions   // texCoords
+        -1.0f,  1.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+
+        -1.0f,  1.0f,  0.0f, 1.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f, 1.0f
+    };
+    vao quad_vao(quad_vertices, 4, {{2, 0}, {2, 2}});
+
+    glBindFramebuffer(GL_FRAMEBUFFER, id);
+    glViewport(0, 0, width, height);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     program.use();
     for (size_t i = 0; i < textures.size(); ++i) {

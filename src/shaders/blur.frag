@@ -6,22 +6,16 @@ out vec4 frag_color;
 
 uniform sampler2D tex;
 
-const float weights[] = float[] (0.06136, 0.24477, 0.38774, 0.24477, 0.06136);
-
-const int kernel_size = 5;
-const int half_kernel_size = kernel_size / 2;
-
 void main() {
     vec2 texel_size = 1.0 / textureSize(tex, 0);
 
-    vec3 color = vec3(0.0);
-
-    for (int x = -half_kernel_size; x <= half_kernel_size; ++x) {
-        for (int y = -half_kernel_size; y <= half_kernel_size; ++y) {
-            vec3 sample = vec3(texture(tex, frag_tex_coords + texel_size * vec2(x, y)));
-            float mult = weights[x + half_kernel_size] * weights[y + half_kernel_size];
-            color += mult * sample;
+    float result = 0.0;
+    for (int x = -2; x < 2; ++x) {
+        for (int y = -2; y < 2; ++y) {
+            vec2 offset = (0.5 + vec2(float(x), float(y))) * texel_size;
+            result += texture(tex, frag_tex_coords + offset).r;
         }
     }
-    frag_color = vec4(color, 1.0);
+
+    frag_color = vec4(vec3(result / float(4 * 4)), 1.0);
 }
