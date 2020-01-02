@@ -207,30 +207,53 @@ struct environment {
 
     env_map reflect_map{2048};
 
+    float ev;
+
     void update(bool is_day, cubemap* skybox) {
         // set up day/night colors and skybox
         glm::vec3 point_light_color{warm_orange};
         glm::vec3 sunlight_color{sunlight};
         glm::vec3 sunlight_strength;
+        glm::vec3 point_light_strength;
 
         if (is_day) {
-            point_light_color = glm::vec3(0.0f);
-            sunlight_strength = glm::vec3(0.002f, 3.0f, 1.0f);
+            float ambient_ev = 8.0f;
+            float diffuse_ev = 15.0f;
+            float specular_ev = 16.0f;
+
+            float ambient_str = 1.0f;
+            float diffuse_str = pow(2.0f, diffuse_ev - ambient_ev) - ambient_str;
+            float specular_str = pow(2.0f, specular_ev - ambient_ev) - ambient_str - diffuse_str;
+
+            point_light_strength = glm::vec3(0.0f);
+            sunlight_strength = glm::vec3(ambient_str, diffuse_str, specular_str);
+            ev = -5.0;
         } else {
-            sunlight_color = glm::vec3(1.0f, 12.0f / 14.0f, 13.0f/ 14.0f);
-            sunlight_strength = glm::vec3(0.003f, 0.0f, 0.0f);
+            float ambient_ev = -2.0f;
+            float diffuse_ev = 5.0f;
+            float specular_ev = 7.0f;
+
+            float ambient_str = 1.0f;
+            float diffuse_str = pow(2.0f, diffuse_ev - ambient_ev) - ambient_str;
+            float specular_str = pow(2.0f, specular_ev - ambient_ev) - ambient_str - diffuse_str;
+
+            point_light_strength = glm::vec3(0.0f, diffuse_str, specular_str);
+            sunlight_strength = glm::vec3(ambient_str, 0.0f, 0.0f);
+            ev = -7.0;
         }
 
         this->skybox = skybox;
 
+        glm::vec3 spot_light_strength{0.0f, 1.0f, 1.0f};
+
         // set up lights
-        dir_light = light{"dir_light", glm::vec3(0.0f), sunlight_dir, sunlight_color, sunlight_strength.x, sunlight_strength.y, sunlight_strength.z, 0.0f, 0.0f, 0.0f};
+        dir_light = light{"dir_light", glm::vec3(0.0f), sunlight_dir, sunlight_color, sunlight_strength, 0.0f, 0.0f, 0.0f};
 
         for (size_t i = 0; i < point_light_count; ++i) {
-            point_lights[i] = light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, 0.000f, 0.8f, 1.0f, 0.0f, 0.0f, point_falloff};
+            point_lights[i] = light{"point_lights[" + std::to_string(i) + "]", point_light_pos[i], glm::vec3(0.0f), point_light_color, point_light_strength, 0.0f, 0.0f, point_falloff};
         }
 
-        spot_light = light{"spot_light", camera_pos, camera_front, spot_light_color, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.03f};
+        spot_light = light{"spot_light", camera_pos, camera_front, spot_light_color, spot_light_strength, 0.0f, 0.0f, 0.03f};
     }
 
     void setup(shader_program const& program) const {
@@ -306,6 +329,10 @@ void environment::render_maps(shader_program const& program, GLuint vp_ubo, std:
     static const shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
     static const shader_program depth_cube({{GL_VERTEX_SHADER, "src/shaders/depth_cube.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/depth_cube.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/depth_cube.frag"}});
 
+    glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
+    glBufferSubData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), sizeof(float), &ev);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
     // draw directional shadow map
     dir_shadow.render(depth, light_space, geometry);
 
@@ -337,7 +364,6 @@ int main() {
     shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
     shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
     shader_program pre_post({{GL_VERTEX_SHADER, "src/shaders/pre_post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pre_post.frag"}});
-    shader_program blend({{GL_VERTEX_SHADER, "src/shaders/blend.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blend.frag"}});
     shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
 
     static const shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
@@ -348,6 +374,7 @@ int main() {
     static const shader_program lit_pass({{GL_VERTEX_SHADER, "src/shaders/lit_pass.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lit_pass.frag"}});
     static const shader_program ssao({{GL_VERTEX_SHADER, "src/shaders/ssao.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/ssao.frag"}});
     static const shader_program blur({{GL_VERTEX_SHADER, "src/shaders/blur.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blur.frag"}});
+    static const shader_program blend({{GL_VERTEX_SHADER, "src/shaders/blend.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blend.frag"}});
     static const shader_program view_deb({{GL_VERTEX_SHADER, "src/shaders/view_deb.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/view_deb.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
@@ -372,26 +399,6 @@ int main() {
 
     vao post_vao(post_vertices, 4, {{2, 0}, {2, 2}});
     vao cube_vao(vertices, 8, {{3, 0}, {3, 3}});
-
-    GLuint ms_fb;
-    glGenFramebuffers(1, &ms_fb);
-    glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
-    GLuint ms_color_buf;
-    glGenTextures(1, &ms_color_buf);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf);
-    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGB16F, width, height, GL_TRUE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, ms_color_buf, 0);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
-    GLuint ms_rbo;
-    glGenRenderbuffers(1, &ms_rbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, ms_rbo);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 8, GL_DEPTH24_STENCIL8, width, height);
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ms_rbo);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "ERROR: ms_fb lacking completeness" << std::endl;
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     GLuint g_fb;
     glGenFramebuffers(1, &g_fb);
@@ -418,29 +425,29 @@ int main() {
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, g_rbo);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "ERROR: ms_fb lacking completeness" << std::endl;
+        std::cerr << "ERROR: g_fb lacking completeness" << std::endl;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     std::array<framebuffer, 8> bloom_fbs{
-        framebuffer(width, height),
-        framebuffer(width / 2, height / 2),
-        framebuffer(width / 4, height / 4),
-        framebuffer(width / 8, height / 8),
-        framebuffer(width / 16, height / 16),
-        framebuffer(width / 32, height / 32),
-        framebuffer(width / 64, height / 64),
-        framebuffer(width / 128, height / 128)
+        framebuffer(width, height, false),
+        framebuffer(width / 2, height / 2, false),
+        framebuffer(width / 4, height / 4, false),
+        framebuffer(width / 8, height / 8, false),
+        framebuffer(width / 16, height / 16, false),
+        framebuffer(width / 32, height / 32, false),
+        framebuffer(width / 64, height / 64, false),
+        framebuffer(width / 128, height / 128, false)
     };
 
     std::array<framebuffer, 7> blend_fbs{
-        framebuffer(width, height),
-        framebuffer(width / 2, height / 2),
-        framebuffer(width / 4, height / 4),
-        framebuffer(width / 8, height / 8),
-        framebuffer(width / 16, height / 16),
-        framebuffer(width / 32, height / 32),
-        framebuffer(width / 64, height / 64)
+        framebuffer(width, height, false),
+        framebuffer(width / 2, height / 2, false),
+        framebuffer(width / 4, height / 4, false),
+        framebuffer(width / 8, height / 8, false),
+        framebuffer(width / 16, height / 16, false),
+        framebuffer(width / 32, height / 32, false),
+        framebuffer(width / 64, height / 64, false)
     };
 
     framebuffer pp_fb(width, height);
@@ -450,7 +457,7 @@ int main() {
     GLuint vp_ubo;
     glGenBuffers(1, &vp_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
-    glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_STATIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4) + sizeof(float), NULL, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, vp_ubo);
 
@@ -491,37 +498,11 @@ int main() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    GLuint ssao_fb;
-    glGenFramebuffers(1, &ssao_fb);
-    glBindFramebuffer(GL_FRAMEBUFFER, ssao_fb);
-    GLuint ssao_color_buf;
-    glGenTextures(1, &ssao_color_buf);
-    glBindTexture(GL_TEXTURE_2D, ssao_color_buf);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssao_color_buf, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "ERROR: ssao_fb lacking completeness" << std::endl;
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    framebuffer ssao_fb{width, height, false};
+    ssao_fb.filter(GL_NEAREST);
 
-    GLuint ssao_blur_fb;
-    glGenFramebuffers(1, &ssao_blur_fb);
-    glBindFramebuffer(GL_FRAMEBUFFER, ssao_blur_fb);
-    GLuint ssao_blur_color_buf;
-    glGenTextures(1, &ssao_blur_color_buf);
-    glBindTexture(GL_TEXTURE_2D, ssao_blur_color_buf);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssao_blur_color_buf, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "ERROR: ssao_blur_fb lacking completeness" << std::endl;
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    framebuffer ssao_blur_fb{width, height, false};
+    ssao_blur_fb.filter(GL_NEAREST);
 
     bool first = true;
 
@@ -532,9 +513,6 @@ int main() {
         //float cur_time = window.get_time();
         //std::cout << cur_time - prev_time << std::endl;
         //prev_time = cur_time;
-
-        glEnable(GL_MULTISAMPLE);
-        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
 
         glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
         glStencilMask(0xFF);
@@ -573,6 +551,7 @@ int main() {
         glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(view));
         glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(projection));
+        glBufferSubData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), sizeof(float), &env.ev);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
         // draw room (g-pass)
@@ -584,61 +563,44 @@ int main() {
         glDisable(GL_BLEND);
         sponza.draw(g_pass);
         glEnable(GL_BLEND);
-        glBindFramebuffer(GL_FRAMEBUFFER, ms_fb);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // generate ssao
-        glViewport(0, 0, width, height);
-        glBindFramebuffer(GL_FRAMEBUFFER, ssao_fb);
-        glClear(GL_COLOR_BUFFER_BIT);
         ssao.use();
+        std::vector<GLuint> ssao_textures;
         for (size_t i = 0; i < g_color_bufs.size(); ++i) {
-            glActiveTexture(GL_TEXTURE0 + i);
-            glBindTexture(GL_TEXTURE_2D, g_color_bufs[i]);
+            ssao_textures.push_back(g_color_bufs[i]);
             ssao.set_uniform("g_bufs[" + std::to_string(i) + "]", static_cast<int>(i));
         }
-        static constexpr int noise_tex_idx = g_color_bufs.size();
-        glActiveTexture(GL_TEXTURE0 + noise_tex_idx);
-        glBindTexture(GL_TEXTURE_2D, noise_tex);
-        ssao.set_uniforms("noise", noise_tex_idx);
+        ssao_textures.push_back(noise_tex);
+        ssao.set_uniforms("noise", g_color_bufs.size());
         for (size_t i = 0; i < ssao_samples; ++i) {
             ssao.set_uniform("samples[" + std::to_string(i) + "]", ssao_kernel[i]);
         }
-        post_vao.use();
-        glDisable(GL_DEPTH_TEST);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glEnable(GL_DEPTH_TEST);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        render_to_buffer(ssao, ssao_fb, ssao_textures);
 
         // blur ssao
         blur.use();
         blur.set_uniform("tex", 0);
-        render_to_buffer(blur, ssao_blur_fb, width, height, {ssao_color_buf});
+        render_to_buffer(blur, ssao_blur_fb, {ssao_fb.color_buf});
 
         // light g-pass
-        glViewport(0, 0, width, height);
-        glBindFramebuffer(GL_FRAMEBUFFER, pp_fb.id);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         lit_pass.use();
         env.setup(lit_pass);
         lit_pass.set_uniforms("light_space", light_space, "far", far, "use_spotlight", use_spotlight, "use_ao", use_ao, "view_pos", camera_pos);
+        std::vector<GLuint> lit_textures;
         for (size_t i = 0; i < g_color_bufs.size(); ++i) {
-            glActiveTexture(GL_TEXTURE0 + i);
-            glBindTexture(GL_TEXTURE_2D, g_color_bufs[i]);
+            lit_textures.push_back(g_color_bufs[i]);
             lit_pass.set_uniform("g_bufs[" + std::to_string(i) + "]", static_cast<int>(i));
         }
-        static constexpr int shadow_tex_idx = g_color_bufs.size();
+        lit_textures.push_back(ssao_blur_fb.color_buf);
+        lit_pass.set_uniform("ssao", static_cast<int>(g_color_bufs.size()));
+        static constexpr int shadow_tex_idx = g_color_bufs.size() + 1;
         env.dir_shadow.activate(lit_pass, "dir_light.shadow_map", shadow_tex_idx);
         for (size_t i = 0; i < env.point_light_count; ++i) {
             env.omni_shadows[i].activate(lit_pass, "point_lights[" + std::to_string(i) + "].shadow_cube", static_cast<int>(shadow_tex_idx + 1 + i));
         }
-        static constexpr int ssao_tex_idx = shadow_tex_idx + env.point_light_count + 1;
-        glActiveTexture(GL_TEXTURE0 + ssao_tex_idx);
-        glBindTexture(GL_TEXTURE_2D, ssao_blur_color_buf);
-        lit_pass.set_uniform("ssao", ssao_tex_idx);
-        post_vao.use();
-        glDisable(GL_DEPTH_TEST);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glEnable(GL_DEPTH_TEST);
+        render_to_buffer(lit_pass, pp_fb, lit_textures);
 
         // blit g-pass depth and stencil buffer
         glBindFramebuffer(GL_READ_FRAMEBUFFER, g_fb);
@@ -674,6 +636,7 @@ int main() {
             }
         } else {
             glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, camera_pos);
             model = glm::translate(model, -sunlight_dir * 900.0f);
             model = glm::scale(model, glm::vec3(15.0f));
 
@@ -711,7 +674,7 @@ int main() {
 
         // extract and downscale bloom
         pre_post.use();
-        pre_post.set_uniform("tex", 0);
+        pre_post.set_uniforms("user_ev", env.ev, "tex", 0);
         render_to_buffer(pre_post, bloom_fbs[0], {pp_fb.color_buf});
         for (size_t i = 1; i < bloom_fbs.size(); ++i) {
             blit_buffer(bloom_fbs[i - 1], bloom_fbs[i], GL_COLOR_ATTACHMENT0);
@@ -727,35 +690,12 @@ int main() {
 
         // render to screen FB
         // TODO look into temporal AA to reduce bloom shimmer
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, width, height);
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         post.use();
         post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "gamma", gamma_strength, "exposure", 1.0f);
-        post.set_uniforms("tex", 0, "bloom", 1, "use_bloom", use_bloom);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, pp_fb.color_buf);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, blend_fbs[0].color_buf);
-        post_vao.use();
-        glDisable(GL_DEPTH_TEST);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glEnable(GL_DEPTH_TEST);
-
-        //// DEBUG render for view-space g_bufs
-        //glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        //glViewport(0, 0, width, height);
-        //glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        //view_deb.use();
-        //view_deb.set_uniform("tex", 0);
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, ssao_color_buf);
-        //post_vao.use();
-        //glDisable(GL_DEPTH_TEST);
-        //glDrawArrays(GL_TRIANGLES, 0, 6);
-        //glEnable(GL_DEPTH_TEST);
+        post.set_uniforms("user_ev", env.ev, "tex", 0, "bloom", 1, "use_bloom", use_bloom, "DEBUG", false);
+        render_to_buffer(post, 0, width, height, {pp_fb.color_buf, blend_fbs[0].color_buf});
+        //post.set_uniforms("user_ev", env.ev, "tex", 0, "bloom", 1, "use_bloom", use_bloom, "DEBUG", true);
+        //render_to_buffer(post, 0, width, height, {g_color_bufs[3], blend_fbs[0].color_buf});
 
         window.swap_buffer();
 

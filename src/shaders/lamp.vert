@@ -9,6 +9,7 @@ layout (location = 4) in vec3 bitangent;
 layout (std140, binding = 0) uniform vp {
     mat4 view;
     mat4 projection;
+    float user_ev;
 };
 
 out vec3 frag_normal;

@@ -7,6 +7,7 @@ out vec4 frag_ssao;
 layout (std140, binding = 0) uniform vp {
     mat4 view;
     mat4 projection;
+    float user_ev;
 };
 
 uniform sampler2D g_bufs[6];

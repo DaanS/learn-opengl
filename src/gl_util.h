@@ -36,9 +36,7 @@ struct light {
     glm::vec3 pos;
     glm::vec3 dir;
     glm::vec3 color;
-    float ambient;
-    float diffuse;
-    float specular;
+    glm::vec3 strength;
     float constant;
     float linear;
     float quadratic;
@@ -46,9 +44,9 @@ struct light {
     void setup(shader_program const& program) const {
         program.set_uniform(name + ".pos", pos);
         program.set_uniform(name + ".dir", dir);
-        program.set_uniform(name + ".ambient", ambient * color);
-        program.set_uniform(name + ".diffuse", diffuse * color);
-        program.set_uniform(name + ".specular", specular * color);
+        program.set_uniform(name + ".ambient", strength.x * color);
+        program.set_uniform(name + ".diffuse", strength.y * color);
+        program.set_uniform(name + ".specular", strength.z * color);
         program.set_uniform(name + ".constant", constant);
         program.set_uniform(name + ".linear", linear);
         program.set_uniform(name + ".quadratic", quadratic);
@@ -273,7 +271,7 @@ struct framebuffer {
     size_t width;
     size_t height;
 
-    framebuffer(size_t width, size_t height) : width{width}, height{height} {
+    framebuffer(size_t width, size_t height, bool use_rbo) : width{width}, height{height} {
         glGenFramebuffers(1, &id);
         glBindFramebuffer(GL_FRAMEBUFFER, id);
 
@@ -287,11 +285,13 @@ struct framebuffer {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_buf, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        glGenRenderbuffers(1, &rbo);
-        glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-        glBindRenderbuffer(GL_RENDERBUFFER, 0);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+        if (use_rbo) {
+            glGenRenderbuffers(1, &rbo);
+            glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+            glBindRenderbuffer(GL_RENDERBUFFER, 0);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+        }
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
@@ -299,8 +299,21 @@ struct framebuffer {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
+    framebuffer(size_t width, size_t height) : framebuffer(width, height, true) {}
+
     framebuffer(GLuint id, GLuint color_buf, GLuint rbo, size_t width, size_t height) :
             id{id}, color_buf{color_buf}, rbo{rbo}, width{width}, height{height} {}
+
+    void filter(GLenum min_mag_filter) {
+        filter(min_mag_filter, min_mag_filter);
+    }
+
+    void filter(GLenum min_filter, GLenum mag_filter) {
+        glBindTexture(GL_TEXTURE_2D, color_buf);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 };
 
 void blit_buffer(framebuffer src, framebuffer dst, GLenum buffer) {

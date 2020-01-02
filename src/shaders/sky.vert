@@ -6,6 +6,7 @@ out vec3 frag_tex_coords;
 layout (std140, binding = 0) uniform vp {
     mat4 view;
     mat4 projection;
+    float user_ev;
 };
 
 uniform mat4 model;

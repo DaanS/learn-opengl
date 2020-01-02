@@ -43,6 +43,7 @@ struct spot_light_type {
 layout (std140, binding = 0) uniform vp {
     mat4 view;
     mat4 projection;
+    float user_ev;
 };
 
 out vec4 frag_color;
@@ -123,7 +124,7 @@ vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir, 
     vec3 specular_color = specular_strength * specular * specular_src;
 
     vec3 emissive_src = texture(g_bufs[4], frag_tex_coords).rgb;
-    vec3 em_color = emissive_src;
+    vec3 em_color = emissive_src * pow(2.0, -user_ev);
 
     return em_color + ambient_color + (1.0 - shadow) * (diffuse_color + specular_color);
 }
