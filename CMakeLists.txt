@@ -53,3 +53,13 @@ target_link_libraries(pbr
     ${SDL2_LIBRARIES}
     ${ASSIMP_LIBRARIES}
 )
+
+add_executable(test
+    src/test.cpp
+)
+target_link_libraries(test
+    GLAD
+    ${CMAKE_DL_LIBS}
+    ${SDL2_LIBRARIES}
+    ${ASSIMP_LIBRARIES}
+)

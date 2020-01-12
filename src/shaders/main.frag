@@ -1,4 +1,4 @@
-#version 330 core
+#version 420 core
 
 struct dir_light_type {
     vec3 dir;
@@ -74,6 +74,12 @@ in mat3 tbn;
 
 out vec4 frag_color;
 
+layout (std140, binding = 0) uniform vp {
+    mat4 view;
+    mat4 projection;
+    float user_ev;
+};
+
 uniform vec3 view_pos;
 
 uniform dir_light_type dir_light;
@@ -87,7 +93,7 @@ uniform material_type material;
 uniform float far;
 
 float shadow_strength_dir(sampler2DShadow shadow_map, vec3 light_dir) {
-    float bias = clamp(0.001 * tan(acos(dot(normalize(frag_normal), light_dir))), 0, 0.005);
+    float bias = clamp(0.001 * tan(acos(dot(normalize(frag_normal), light_dir))), 0.0, 0.005);
 
     vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
     proj_coords = proj_coords * 0.5 + 0.5;
@@ -102,8 +108,8 @@ float shadow_strength_dir(sampler2DShadow shadow_map, vec3 light_dir) {
     offset.y += offset.x;
     if (offset.y > 1.1) offset.y = 0;
     for (int i = 0; i < 16; ++i) {
-        vec2 sample = vec2(-3.5 + 2.0 * (i % 4), -3.5 + 2.0 * (i / 4));
-        shadow += texture(shadow_map, proj_coords + vec3((offset + sample) * texel_size, 0));
+        vec2 sample_pos = vec2(-3.5 + 2.0 * (i % 4), -3.5 + 2.0 * (i / 4));
+        shadow += texture(shadow_map, proj_coords + vec3((offset + sample_pos) * texel_size, 0));
     }
     shadow /= 16.0;
 
@@ -141,7 +147,8 @@ vec3 calc_base_light(vec3 ambient, vec3 diffuse, vec3 specular, vec3 light_dir, 
     float spec_strength = pow(max(dot(normal, halfway_dir), 0.0), 2 * material.shininess);
     vec3 spec_color = spec_strength * specular * (material.has_specular_map ? vec3(texture(material.specular, frag_tex_coords)) : material.color_specular);
 
-    vec3 em_color = (material.has_emissive_map ? vec3(texture(material.emissive, frag_tex_coords)) : vec3(0.0));
+    vec3 emissive_src = (material.has_emissive_map ? vec3(texture(material.emissive, frag_tex_coords)) : vec3(0.0));
+    vec3 em_color = emissive_src * pow(2.0, -user_ev);
 
     return em_color + ambient_color + (1.0 - shadow) * (diff_color + spec_color);
 }

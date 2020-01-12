@@ -74,6 +74,8 @@ struct shader_program {
             glGetProgramInfoLog(id, info_log_len, NULL, msg.data());
             std::cout << "PROGRAM info log:" << std::endl;
             std::cout << msg.data() << std::endl;
+
+            std::exit(1);
         }
     }
 

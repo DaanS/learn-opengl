@@ -559,7 +559,7 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         g_pass.use();
-        g_pass.set_uniforms("light_space", light_space, "model", model);
+        g_pass.set_uniforms("model", model);
         glDisable(GL_BLEND);
         sponza.draw(g_pass);
         glEnable(GL_BLEND);
