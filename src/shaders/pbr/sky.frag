@@ -1,0 +1,23 @@
+#version 420 core
+in vec3 frag_tex_coords;
+
+out vec4 frag_color;
+
+layout (std140, binding = 0) uniform vp {
+    mat4 view;
+    mat4 projection;
+    float user_ev;
+};
+
+uniform bool is_day;
+
+uniform samplerCube tex;
+
+void main() {
+    vec3 sky_color = vec3(texture(tex, frag_tex_coords)) * pow(2.0, -user_ev);
+
+    sky_color = sky_color / (sky_color + vec3(1.0));
+    sky_color = pow(sky_color, vec3(1.0 / 2.2));
+
+    frag_color = vec4(sky_color, 1.0);
+}

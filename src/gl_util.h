@@ -377,4 +377,10 @@ void render_to_buffer(shader_program const& program, GLuint id, size_t width, si
     glEnable(GL_DEPTH_TEST);
 }
 
+template<typename TexType>
+void activate_texture(TexType const & tex, shader_program const & program, std::string name, int unit) {
+    tex.activate(GL_TEXTURE0 + unit);
+    program.set_uniform(name, unit);
+}
+
 #endif

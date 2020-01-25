@@ -69,7 +69,7 @@ struct cubemap {
         glDeleteTextures(1, &id);
     }
 
-    void activate(GLenum unit) {
+    void activate(GLenum unit) const {
         glActiveTexture(unit);
         glBindTexture(GL_TEXTURE_CUBE_MAP, id);
         glActiveTexture(GL_TEXTURE0);
@@ -125,7 +125,56 @@ struct texture {
         glDeleteTextures(1, &id);
     }
 
-    void activate(GLenum unit) {
+    void activate(GLenum unit) const {
+        glActiveTexture(unit);
+        glBindTexture(GL_TEXTURE_2D, id);
+        glActiveTexture(GL_TEXTURE0);
+    }
+};
+
+struct hdr {
+    GLuint id;
+
+    hdr(std::string const& path) {
+        glActiveTexture(GL_TEXTURE0);
+        glGenTextures(1, &id);
+        glBindTexture(GL_TEXTURE_2D, id);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        int width, height, channel_count;
+        stbi_set_flip_vertically_on_load(true);
+        float * img_data = stbi_loadf(path.c_str(), &width, &height, &channel_count, 0);
+        if (!img_data) {
+            std::cerr << "ERROR loading " << path << std::endl;
+        }
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, img_data);
+        stbi_image_free(img_data);
+        stbi_set_flip_vertically_on_load(false);
+    }
+
+    hdr(hdr && other) {
+        id = other.id;
+        other.id = 0;
+    }
+
+    hdr & operator=(hdr && other) {
+        std::swap(id, other.id);
+        return *this;
+    }
+
+    hdr(hdr const & other) = delete;
+    hdr & operator=(hdr const & other) = delete;
+
+    ~hdr() {
+        glDeleteTextures(1, &id);
+    }
+
+    void activate(GLenum unit) const {
         glActiveTexture(unit);
         glBindTexture(GL_TEXTURE_2D, id);
         glActiveTexture(GL_TEXTURE0);

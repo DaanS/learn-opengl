@@ -19,8 +19,6 @@ out mat3 tbn;
 
 uniform mat4 model;
 
-out vec3 deb;
-
 void main() {
     gl_Position = projection * view * model * vec4(pos + normal * 0.1, 1.0);
 }
