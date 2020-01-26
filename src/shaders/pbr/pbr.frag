@@ -32,10 +32,14 @@ uniform sampler2D brdf_lut;
 uniform bool use_ibl;
 uniform bool use_fsr;
 uniform bool use_corr;
-uniform bool use_opt;
+uniform bool use_lamb;
 
 vec3 fresnel_schlick(float cos_theta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cos_theta, 5.0);
+}
+
+vec3 fresnel_schlick_90(float cos_theta, vec3 F0, float F90) {
+    return F0 + (F90 - F0) * pow(1.0 - cos_theta, 5.0);
 }
 
 vec3 fresnel_schlick_roughness(float cos_theta, vec3 F0, float roughness) {
@@ -86,6 +90,20 @@ float geometry_smith_correlated(float NdotV, float NdotL, float roughness) {
     return V;
 }
 
+float fr_disney_diffuse(float NdotV, float NdotL, float LdotH, float roughness) {
+    float a = roughness * roughness;
+    float linear_roughness = a * a;
+
+    float energy_bias = mix(0, 0.5, linear_roughness);
+    float energy_factor = mix(1.0, 1.0 / 1.51, linear_roughness);
+    float Fd90 = energy_bias + 2.0 * LdotH * LdotH * linear_roughness;
+    vec3 F0 = vec3(1.0);
+    float light_scatter = fresnel_schlick_90(NdotL, F0, Fd90).r;
+    float view_scatter = fresnel_schlick_90(NdotV, F0, Fd90).r;
+
+    return light_scatter * view_scatter * energy_factor;
+}
+
 vec3 calc_pbr_light(point_light_type light, vec3 V, vec3 N) {
     vec3 L = normalize(light.pos - frag_pos);
     vec3 H = normalize(V + L);
@@ -112,7 +130,10 @@ vec3 calc_pbr_light(point_light_type light, vec3 V, vec3 N) {
     vec3 kD = vec3(1.0) - kS;
     kD *= 1.0 - material.metallic;
 
-    return (kD * material.albedo / PI + specular) * radiance * NdotL;
+    float LdotH = max(dot(L, H), 0.0);
+    vec3 diffuse = (use_lamb ? fr_disney_diffuse(NdotV, NdotL, LdotH, material.roughness) : 1.0) * material.albedo / PI;
+
+    return (kD * diffuse + specular) * radiance * NdotL;
 }
 
 void main() {

@@ -35,6 +35,7 @@ glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
 static bool use_ibl = true;
 static bool use_fsr = true;
 static bool use_corr = true;
+static bool use_lamb = true;
 
 struct sdl_window {
     SDL_Window * window;
@@ -89,6 +90,7 @@ struct sdl_window {
                         case SDL_SCANCODE_I: use_ibl = !use_ibl; break;
                         case SDL_SCANCODE_R: use_fsr = !use_fsr; break;
                         case SDL_SCANCODE_C: use_corr = !use_corr; break;
+                        case SDL_SCANCODE_L: use_lamb = !use_lamb; break;
                         default: break;
                     }
                     break;
@@ -252,8 +254,8 @@ int main() {
     static const shader_program sky{{GL_VERTEX_SHADER, "src/shaders/pbr/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/sky.frag"}};
     static const shader_program lamp{{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}};
 
-    //static const glm::vec3 sphere_color = glm::pow(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(2.2f));
-    static const glm::vec3 sphere_color = glm::pow(glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(2.2f));
+    static const glm::vec3 sphere_color = glm::pow(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(2.2f));
+    //static const glm::vec3 sphere_color = glm::pow(glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(2.2f));
     static const glm::vec3 light_positions[] = {
         glm::vec3(-10.0f,  10.0f, 10.0f),
         glm::vec3( 10.0f,  10.0f, 10.0f),
@@ -376,7 +378,7 @@ int main() {
         program.use();
 
         program.set_uniforms("projection", projection, "view", view, "view_pos", camera_pos);
-        program.set_uniforms("use_ibl", use_ibl, "use_fsr", use_fsr, "use_corr", use_corr);
+        program.set_uniforms("use_ibl", use_ibl, "use_fsr", use_fsr, "use_corr", use_corr, "use_lamb", use_lamb);
         program.set_uniforms("material.albedo", sphere_color, "material.roughness", 40.0f, "material.ao", 1.0f);
         loft_conv.activate(program, "irradiance_map", 0);
         loft_spec.activate(program, "prefilter_map", 1);
