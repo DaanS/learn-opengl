@@ -135,6 +135,81 @@ struct env_map {
     }
 };
 
+struct reflection_map {
+    size_t size;
+    GLuint fb;
+    GLuint tex;
+    GLuint rbo;
+
+    reflection_map(size_t size) : size{size} {
+        glActiveTexture(GL_TEXTURE0);
+
+        glGenFramebuffers(1, &fb);
+        glBindFramebuffer(GL_FRAMEBUFFER, fb);
+
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, tex);
+        for (size_t i = 0; i < 6; ++i) {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, size, size, 0, GL_RGB, GL_FLOAT, NULL);
+        }
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP, tex, 0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+        glGenRenderbuffers(1, &rbo);
+        glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, size, size);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "ERROR: framebuffer lacking completeness" << std::endl;
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    void render(glm::vec3 pos, GLuint vp_ubo, std::function<void(glm::vec3, float)> render_func) const {
+        glBindFramebuffer(GL_FRAMEBUFFER, fb);
+
+        glm::mat4 cube_proj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 1000.0f);
+        glBindBuffer(GL_UNIFORM_BUFFER, vp_ubo);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(cube_proj));
+
+        constexpr static size_t mip_levels = 5;
+        for (size_t mip = 0; mip < mip_levels; ++mip) {
+            size_t mip_size = size * std::pow(0.5, mip);
+
+            glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, mip_size, mip_size);
+            glViewport(0, 0, mip_size, mip_size);
+
+            float roughness = static_cast<float>(mip) / static_cast<float>(mip_levels - 1);
+            for (size_t face_idx = 0; face_idx < 6; ++face_idx) {
+                glm::mat4 cube_view = glm::lookAt(pos, pos + targets[face_idx], ups[face_idx]);
+                glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(cube_view));
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face_idx, tex, mip);
+                render_func(pos, roughness);
+                glClear(GL_DEPTH_BUFFER_BIT);
+            }
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    void activate(shader_program const & program, std::string name, int unit) const {
+        glActiveTexture(GL_TEXTURE0 + unit);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, tex);
+        glActiveTexture(GL_TEXTURE0);
+        program.set_uniform(name, unit);
+    }
+};
+
 struct dir_shadow_map {
     size_t size;
     GLuint fb;
@@ -313,6 +388,13 @@ struct framebuffer {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter);
         glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    void activate_texture(shader_program const& program, std::string name, int unit) {
+        glActiveTexture(GL_TEXTURE0 + unit);
+        glBindTexture(GL_TEXTURE_2D, color_buf);
+        glActiveTexture(GL_TEXTURE0);
+        program.set_uniform(name, unit);
     }
 };
 

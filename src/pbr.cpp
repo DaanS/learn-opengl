@@ -34,6 +34,7 @@ glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
 
 static bool use_ibl = true;
 static bool use_fsr = true;
+static bool use_corr = true;
 
 struct sdl_window {
     SDL_Window * window;
@@ -87,6 +88,7 @@ struct sdl_window {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
                         case SDL_SCANCODE_I: use_ibl = !use_ibl; break;
                         case SDL_SCANCODE_R: use_fsr = !use_fsr; break;
+                        case SDL_SCANCODE_C: use_corr = !use_corr; break;
                         default: break;
                     }
                     break;
@@ -245,10 +247,13 @@ int main() {
     static const shader_program program{{GL_VERTEX_SHADER, "src/shaders/pbr/pbr.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/pbr.frag"}};
     static const shader_program equi{{GL_VERTEX_SHADER, "src/shaders/pbr/equi.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/equi.frag"}};
     static const shader_program conv{{GL_VERTEX_SHADER, "src/shaders/pbr/conv.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/conv.frag"}};
+    static const shader_program spec_conv{{GL_VERTEX_SHADER, "src/shaders/pbr/spec_conv.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/spec_conv.frag"}};
+    static const shader_program int_brdf{{GL_VERTEX_SHADER, "src/shaders/pbr/int_brdf.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/int_brdf.frag"}};
     static const shader_program sky{{GL_VERTEX_SHADER, "src/shaders/pbr/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/sky.frag"}};
     static const shader_program lamp{{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}};
 
-    static const glm::vec3 sphere_color = glm::pow(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(2.2f));
+    //static const glm::vec3 sphere_color = glm::pow(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(2.2f));
+    static const glm::vec3 sphere_color = glm::pow(glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(2.2f));
     static const glm::vec3 light_positions[] = {
         glm::vec3(-10.0f,  10.0f, 10.0f),
         glm::vec3( 10.0f,  10.0f, 10.0f),
@@ -263,11 +268,15 @@ int main() {
     };
 
     hdr loft_hdr{"res/Newport_Loft/Newport_Loft_Ref.hdr"};
-    env_map loft_cube{512};
-    env_map loft_conv{512};
+    env_map loft_cube{2048};
+    env_map loft_conv{2048};
+    reflection_map loft_spec{512};
 
     static const vao sky_vao(vertices, 8, {{3, 0}});
     cubemap sky_map{{"res/skybox/right.jpg", "res/skybox/left.jpg", "res/skybox/top.jpg", "res/skybox/bottom.jpg", "res/skybox/front.jpg", "res/skybox/back.jpg"}};
+
+    framebuffer brdf_lut_fb{512, 512};
+    framebuffer brdf_corr_lut_fb{512, 512};
 
     GLuint vp_ubo;
     glGenBuffers(1, &vp_ubo);
@@ -281,7 +290,26 @@ int main() {
         model = glm::translate(model, pos);
         program.use();
         program.set_uniforms("model", model);
-        activate_texture(loft_hdr, conv, "tex", 0);
+        activate_texture(loft_hdr, program, "tex", 0);
+        sky_vao.use();
+        glDepthMask(GL_FALSE);
+        glCullFace(GL_FRONT);
+        glDepthFunc(GL_LEQUAL);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glDepthFunc(GL_LESS);
+        glCullFace(GL_BACK);
+        glDepthMask(GL_TRUE);
+    };
+
+    auto spec_render_func = [&](shader_program const& program, glm::vec3 pos, float roughness) {
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, pos);
+        program.use();
+        program.set_uniforms("model", model, "roughness", roughness, "src_size", static_cast<int>(loft_cube.size));
+        glBindTexture(GL_TEXTURE_CUBE_MAP, loft_cube.tex);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+        loft_cube.activate(program, "tex", 0);
         sky_vao.use();
         glDepthMask(GL_FALSE);
         glCullFace(GL_FRONT);
@@ -294,9 +322,19 @@ int main() {
 
     loft_cube.render(glm::vec3(0.0f), vp_ubo, [&](glm::vec3 pos) { loft_render_func(equi, pos); });
     loft_conv.render(glm::vec3(0.0f), vp_ubo, [&](glm::vec3 pos) { loft_render_func(conv, pos); });
+    loft_spec.render(glm::vec3(0.0f), vp_ubo, [&](glm::vec3 pos, float roughness) { spec_render_func(spec_conv, pos, roughness); });
+
+    int_brdf.use();
+    int_brdf.set_uniform("use_corr", false);
+    render_to_buffer(int_brdf, brdf_lut_fb, {});
+    int_brdf.set_uniform("use_corr", true);
+    render_to_buffer(int_brdf, brdf_corr_lut_fb, {});
+
     glViewport(0, 0, width, height);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
     while (window.running) {
         window.handle_events();
@@ -325,7 +363,7 @@ int main() {
         model = glm::mat4(1.0f);
         model = glm::translate(model, camera_pos);
         sky.set_uniforms("model", model, "is_day", true);
-        loft_cube.activate(sky, "tex", 0);
+        loft_spec.activate(sky, "tex", 0);
         sky_vao.use();
         glDepthMask(GL_FALSE);
         glCullFace(GL_FRONT);
@@ -337,9 +375,12 @@ int main() {
 
         program.use();
 
-        program.set_uniforms("projection", projection, "view", view, "view_pos", camera_pos, "use_ibl", use_ibl, "use_fsr", use_fsr);
+        program.set_uniforms("projection", projection, "view", view, "view_pos", camera_pos);
+        program.set_uniforms("use_ibl", use_ibl, "use_fsr", use_fsr, "use_corr", use_corr);
         program.set_uniforms("material.albedo", sphere_color, "material.roughness", 40.0f, "material.ao", 1.0f);
         loft_conv.activate(program, "irradiance_map", 0);
+        loft_spec.activate(program, "prefilter_map", 1);
+        (use_corr ? brdf_corr_lut_fb : brdf_lut_fb).activate_texture(program, "brdf_lut", 2);
         for (size_t i = 0; i < 4; ++i) {
             program.set_uniforms("point_lights[" + std::to_string(i) + "].pos", light_positions[i],
                                  "point_lights[" + std::to_string(i) + "].color", light_colors[i]);
