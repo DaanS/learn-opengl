@@ -13,6 +13,18 @@ struct material_type {
     float metallic;
     float roughness;
     float ao;
+
+    bool has_albedo_map;
+    bool has_metallic_map;
+    bool has_roughness_map;
+    bool has_ao_map;
+    bool has_normal_map;
+
+    sampler2D albedo_map;
+    sampler2D metallic_map;
+    sampler2D roughness_map;
+    sampler2D ao_map;
+    sampler2D normal_map;
 };
 
 in vec3 frag_pos;
@@ -33,6 +45,12 @@ uniform bool use_ibl;
 uniform bool use_fsr;
 uniform bool use_corr;
 uniform bool use_lamb;
+
+vec3 albedo = material.has_albedo_map ? texture(material.albedo_map, frag_tex_coords).rgb : material.albedo;
+float metallic = material.has_metallic_map ? texture(material.metallic_map, frag_tex_coords).r : material.metallic;
+float roughness = material.has_roughness_map ? texture(material.roughness_map, frag_tex_coords).r : material.roughness;
+float ao = material.has_ao_map ? texture(material.ao_map, frag_tex_coords).r : material.ao;
+vec3 normal = material.has_normal_map ? texture(material.normal_map, frag_tex_coords).rgb : frag_normal;
 
 vec3 fresnel_schlick(float cos_theta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cos_theta, 5.0);
@@ -113,14 +131,14 @@ vec3 calc_pbr_light(point_light_type light, vec3 V, vec3 N) {
     vec3 radiance = light.color * attenuation;
 
     vec3 F0 = vec3(0.04);
-    F0 = mix(F0, material.albedo, material.metallic);
+    F0 = mix(F0, albedo, metallic);
     vec3 F = fresnel_schlick(max(dot(H, V), 0.0), F0);
 
     float NdotL = max(dot(N, L), 0.0);
     float NdotV = max(dot(N, V), 0.00001);
 
-    float D = distribution_ggx(N, H, material.roughness);
-    float G = use_corr ? geometry_smith_correlated(NdotL, NdotV, material.roughness) : geometry_smith(NdotL, NdotV, material.roughness);
+    float D = distribution_ggx(N, H, roughness);
+    float G = use_corr ? geometry_smith_correlated(NdotL, NdotV, roughness) : geometry_smith(NdotL, NdotV, roughness);
 
     vec3 num = D * G * F;
     float denom = use_corr ? 1 : 4.0 * NdotV * NdotL;
@@ -128,10 +146,10 @@ vec3 calc_pbr_light(point_light_type light, vec3 V, vec3 N) {
 
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
-    kD *= 1.0 - material.metallic;
+    kD *= 1.0 - metallic;
 
     float LdotH = max(dot(L, H), 0.0);
-    vec3 diffuse = (use_lamb ? fr_disney_diffuse(NdotV, NdotL, LdotH, material.roughness) : 1.0) * material.albedo / PI;
+    vec3 diffuse = (use_lamb ? fr_disney_diffuse(NdotV, NdotL, LdotH, roughness) : 1.0) * albedo / PI;
 
     return (kD * diffuse + specular) * radiance * NdotL;
 }
@@ -145,23 +163,23 @@ void main() {
         Lo += calc_pbr_light(point_lights[i], V, N);
     }
 
-    vec3 ambient = vec3(0.03) * material.albedo * material.ao;
+    vec3 ambient = vec3(0.03) * albedo * ao;
     if (use_ibl) {
-        vec3 F0 = mix(vec3(0.04), material.albedo, material.metallic);
-        vec3 kS = fresnel_schlick_roughness(max(dot(N, V), 0.0), F0, (use_fsr ? material.roughness : 0.0));
+        vec3 F0 = mix(vec3(0.04), albedo, metallic);
+        vec3 kS = fresnel_schlick_roughness(max(dot(N, V), 0.0), F0, (use_fsr ? roughness : 0.0));
         vec3 kD = 1.0 - kS;
-        kD *= 1.0 - material.metallic;
+        kD *= 1.0 - metallic;
 
         vec3 irradiance = texture(irradiance_map, N).rgb;
-        vec3 diffuse = irradiance * material.albedo;
+        vec3 diffuse = irradiance * albedo;
 
         vec3 R = reflect(-V, N);
         const float MAX_REFLECTION_LOD = 4.0;
-        vec3 prefiltererd_color = textureLod(prefilter_map, R, material.roughness * MAX_REFLECTION_LOD).rgb;
-        vec2 brdf = texture(brdf_lut, vec2(max(dot(N, V), 0.0), material.roughness)).rg;
+        vec3 prefiltererd_color = textureLod(prefilter_map, R, roughness * MAX_REFLECTION_LOD).rgb;
+        vec2 brdf = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughness)).rg;
         vec3 specular = prefiltererd_color * (F0 * brdf.x + brdf.y);
 
-        ambient = (kD * diffuse + specular) * material.ao;
+        ambient = (kD * diffuse + specular) * ao;
     }
 
     vec3 color = ambient + Lo;

@@ -332,6 +332,14 @@ int main() {
     int_brdf.set_uniform("use_corr", true);
     render_to_buffer(int_brdf, brdf_corr_lut_fb, {});
 
+    std::array<pbr_material, 5> materials{
+        pbr_material{"rusted_iron", "res/pbr"},
+        pbr_material{"gold", "res/pbr"},
+        pbr_material{"grass", "res/pbr"},
+        pbr_material{"plastic", "res/pbr"},
+        pbr_material{"wall", "res/pbr"}
+    };
+
     glViewport(0, 0, width, height);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -392,6 +400,8 @@ int main() {
         static constexpr int rows = 7;
         static constexpr int cols = 7;
         static constexpr float spacing = 2.5;
+        pbr_material proc_mat{"proc", sphere_color, 1.0f, 0.05f, 1.0f};
+        proc_mat.activate(program, 3);
         for (int row = 0; row < rows; ++row) {
             program.set_uniform("material.metallic", (float) row / (float) rows);
             for (int col = 0; col < cols; ++col) {
@@ -406,6 +416,21 @@ int main() {
                 program.set_uniform("model", model);
                 render_sphere();
             }
+        }
+
+        for (int mat_idx = 0; mat_idx < static_cast<int>(materials.size()); ++mat_idx) {
+            program.set_uniform("material.metallic", 1.0f);
+            program.set_uniform("material.roughness", glm::clamp((float) mat_idx / (float) 5, 0.05f, 1.0f));
+            program.set_uniforms("material.albedo", glm::vec3{1.0f, 0.5f, 0.0f}, "material.ao", 1.0f);
+            materials[mat_idx].activate(program, 3);
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3{
+                (mat_idx - 2) * spacing,
+                0.0f,
+                10.0f
+            });
+            program.set_uniform("model", model);
+            render_sphere();
         }
 
         window.swap_buffer();

@@ -43,6 +43,67 @@ struct vertex {
     glm::vec3 bitangent;
 };
 
+struct pbr_material {
+    std::string name;
+
+    glm::vec3 color_albedo{0.0f, 0.0f, 0.0f};
+
+    float val_metallic{0.0f};
+    float val_roughness{0.0f};
+    float val_ao{0.0f};
+
+    std::shared_ptr<texture> albedo{nullptr};
+    std::shared_ptr<texture> metallic{nullptr};
+    std::shared_ptr<texture> roughness{nullptr};
+    std::shared_ptr<texture> ao{nullptr};
+    std::shared_ptr<texture> normal{nullptr};
+
+    static std::unordered_map<std::string, std::shared_ptr<texture>> loaded_textures;
+
+    pbr_material(std::string name, std::string tex_path_base) : name{name} {
+        albedo = load_texture(name, tex_path_base, "albedo");
+        metallic = load_texture(name, tex_path_base, "metallic");
+        roughness = load_texture(name, tex_path_base, "roughness");
+        ao = load_texture(name, tex_path_base, "ao");
+        normal = load_texture(name, tex_path_base, "normal");
+    }
+
+    pbr_material(std::string name, glm::vec3 albedo, float metallic, float roughness, float ao)
+    : name{name}, color_albedo{albedo}, val_metallic{metallic}, val_roughness{roughness}, val_ao{ao} { }
+
+    static std::shared_ptr<texture> load_texture(std::string name, std::string tex_path_base, std::string type) {
+        std::string path = tex_path_base + "/" + name + "/" + type + ".png";
+
+        auto found{loaded_textures.find(path)};
+        if (found != loaded_textures.end()) {
+            return found->second;
+        } else {
+            auto tex = std::make_shared<texture>(path, true, type == "albedo");
+            loaded_textures.emplace(std::pair(path, tex));
+            return tex;
+        }
+    }
+
+    void activate_map(std::string name, std::shared_ptr<texture> map, int unit, shader_program const& program) {
+        program.set_uniform("material.has_" + name + "_map", static_cast<bool>(map));
+        if (map) {
+            glActiveTexture(GL_TEXTURE0 + unit);
+            glBindTexture(GL_TEXTURE_2D, map->id);
+            program.set_uniform("material." + name + "_map", unit);
+        }
+    }
+
+    void activate(shader_program const& program, int start_unit) {
+        activate_map("albedo", albedo, start_unit + 0, program);
+        activate_map("metallic", metallic, start_unit + 1, program);
+        activate_map("roughness", roughness, start_unit + 2, program);
+        activate_map("ao", ao, start_unit + 3, program);
+        activate_map("normal", normal, start_unit + 4, program);
+    }
+};
+
+inline std::unordered_map<std::string, std::shared_ptr<texture>> pbr_material::loaded_textures;
+
 struct material {
     std::string name;
 
