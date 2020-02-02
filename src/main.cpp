@@ -38,6 +38,7 @@ static bool use_spotlight{false};
 static bool use_ao{true};
 static bool is_day{false};
 static bool light_changed{true};
+static bool use_frag_tbn{false};
 static const float gamma_strength{2.2f};
 
 static float point_falloff = 0.0015f;
@@ -97,6 +98,7 @@ struct sdl_window {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
                         case SDL_SCANCODE_B: use_bloom = !use_bloom; break;
                         case SDL_SCANCODE_C: use_ao = !use_ao; break;
+                        case SDL_SCANCODE_F: use_frag_tbn = !use_frag_tbn; break;
                         case SDL_SCANCODE_M: draw_magicube = !draw_magicube; break;
                         case SDL_SCANCODE_N: draw_hair = !draw_hair; break;
                         case SDL_SCANCODE_O: draw_outline_suit = !draw_outline_suit; break;
@@ -124,8 +126,6 @@ struct sdl_window {
         float delta_time = cur_time - prev_time;
         prev_time = cur_time;
         float camera_speed = 50.0f * delta_time;
-
-        glPolygonMode(GL_FRONT_AND_BACK, key_state[SDL_SCANCODE_F] ? GL_LINE : GL_FILL);
 
         if (key_state[SDL_SCANCODE_W]) camera_pos += camera_speed * camera_front;
         if (key_state[SDL_SCANCODE_S]) camera_pos -= camera_speed * camera_front;
@@ -559,7 +559,7 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         g_pass.use();
-        g_pass.set_uniforms("model", model);
+        g_pass.set_uniforms("model", model, "use_frag_tbn", use_frag_tbn);
         glDisable(GL_BLEND);
         sponza.draw(g_pass);
         glEnable(GL_BLEND);

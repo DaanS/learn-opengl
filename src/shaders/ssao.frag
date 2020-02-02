@@ -22,8 +22,8 @@ const float bias = 0.3;
 void main() {
     vec2 noise_scale = textureSize(g_bufs[0], 0) / 4.0;
 
-    vec3 frag_pos = texture(g_bufs[0], frag_tex_coords).rgb;
-    vec3 normal = texture(g_bufs[1], frag_tex_coords).rgb;
+    vec3 frag_pos = vec3(view * vec4(texture(g_bufs[0], frag_tex_coords).rgb, 1.0));
+    vec3 normal = vec3(view * vec4(texture(g_bufs[1], frag_tex_coords).rgb, 0.0));
     vec3 random = texture(noise, frag_tex_coords * noise_scale).rgb;
 
     vec3 tangent = normalize(random - normal * dot(random, normal));
@@ -41,7 +41,7 @@ void main() {
         offset.xyz /= offset.w;
         offset.xyz = offset.xyz * 0.5 + 0.5;
 
-        float sample_depth = texture(g_bufs[0], offset.xy).z;
+        float sample_depth = (view * vec4(texture(g_bufs[0], offset.xy).rgb, 1.0)).z;
         float range_check = smoothstep(0.0, 1.0, radius / abs(frag_pos.z - sample_depth));
         occlusion += (sample_depth >= sample_tmp.z + bias ? 1.0 : 0.0) * range_check;
     }

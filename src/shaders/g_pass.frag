@@ -41,6 +41,27 @@ layout (location = 5) out vec3 misc; // r = gloss;
 
 uniform material_type material;
 
+uniform bool use_frag_tbn;
+
+mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 tex_coords) {
+    vec3 dp1 = dFdx(pos);
+    vec3 dp2 = dFdy(pos);
+
+    vec2 duv1 = dFdx(tex_coords);
+    vec2 duv2 = dFdy(tex_coords);
+
+    float f = 1.0f / (duv1.x * duv2.y - duv2.x * duv1.y);
+    vec3 T = normalize(f * (duv2.y * dp1 - duv1.y * dp2));
+    vec3 B = normalize(f * (duv2.x * dp1 - duv1.x * dp2));
+
+    float flip = 1.0;
+    if (dot(cross(T, B), normal) <= 0) flip = -1.0;
+    T = normalize(T - dot(T, normal) * normal);
+    B = cross(normal, T) * flip;
+
+    return mat3(T, B, normal);
+}
+
 void main() {
     if (material.has_opacity_map) {
         vec4 tex_color = texture(material.opacity, frag_tex_coords);
@@ -52,7 +73,7 @@ void main() {
     if (material.has_normal_map) {
         normal = vec3(texture(material.normal, frag_tex_coords));
         normal = normalize(normal * 2.0 - 1.0);
-        normal = normalize(tbn * normal);
+        normal = normalize((use_frag_tbn ? cotangent_frame(normalize(frag_normal), frag_pos, frag_tex_coords) : tbn) * normal);
     } else {
         normal = normalize(frag_normal);
     }
