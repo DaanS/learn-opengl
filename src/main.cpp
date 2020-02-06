@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <glad/glad.h>
+
 #include <SDL.h>
 #include <SDL_opengl.h>
 
@@ -352,7 +353,7 @@ void environment::render_maps(shader_program const& program, GLuint vp_ubo, std:
     glViewport(0, 0, width, height);
 }
 
-int main() {
+int main(int argc, char * argv[]) {
     sdl_window window(width, height, "LearnOpenGL");
 
     if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {

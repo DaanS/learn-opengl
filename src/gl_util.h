@@ -1,6 +1,8 @@
 #ifndef GL_UTIL_H
 #define GL_UTIL_H
 
+#include <functional>
+
 #include "shader.h"
 #include "model.h"
 #include "texture.h"

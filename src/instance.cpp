@@ -196,7 +196,7 @@ struct light {
 static constexpr size_t instance_count = 100000;
 glm::mat4 model_matrices[instance_count];
 
-int main() {
+int main(int argc, char * argv[]) {
     sdl_window window(width, height, "LearnOpenGL");
 
     if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {
