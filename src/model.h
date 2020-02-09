@@ -85,7 +85,7 @@ struct pbr_material {
         }
     }
 
-    void activate_map(std::string name, std::shared_ptr<texture> map, int unit, shader_program const& program) {
+    void activate_map(std::string name, std::shared_ptr<texture> map, int unit, shader_program const& program) const {
         program.set_uniform("material.has_" + name + "_map", static_cast<bool>(map));
         if (map) {
             glActiveTexture(GL_TEXTURE0 + unit);
@@ -94,7 +94,7 @@ struct pbr_material {
         }
     }
 
-    void activate(shader_program const& program, int start_unit) {
+    void activate(shader_program const& program, int start_unit) const {
         activate_map("albedo", albedo, start_unit + 0, program);
         activate_map("metallic", metallic, start_unit + 1, program);
         activate_map("roughness", roughness, start_unit + 2, program);
@@ -240,6 +240,17 @@ struct mesh {
         activate_map("bump", mat.bump, 3, program);
         activate_map("normal", mat.normal, 4, program);
         activate_map("opacity", mat.opacity, 5, program);
+
+        glBindVertexArray(vao);
+        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+
+        glActiveTexture(GL_TEXTURE0);
+    }
+
+    void draw_pbr(shader_program const & program, pbr_material const & mat, int start_unit) const {
+        program.use();
+        mat.activate(program, start_unit);
 
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);

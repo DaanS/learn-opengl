@@ -46,11 +46,24 @@ uniform bool use_fsr;
 uniform bool use_corr;
 uniform bool use_lamb;
 
-vec3 albedo = material.has_albedo_map ? texture(material.albedo_map, frag_tex_coords).rgb : material.albedo;
-float metallic = material.has_metallic_map ? texture(material.metallic_map, frag_tex_coords).r : material.metallic;
-float roughness = material.has_roughness_map ? texture(material.roughness_map, frag_tex_coords).r : material.roughness;
-float ao = material.has_ao_map ? texture(material.ao_map, frag_tex_coords).r : material.ao;
-vec3 normal = material.has_normal_map ? texture(material.normal_map, frag_tex_coords).rgb : frag_normal;
+mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 tex_coords) {
+    vec3 dp1 = dFdx(pos);
+    vec3 dp2 = dFdy(pos);
+
+    vec2 duv1 = dFdx(tex_coords);
+    vec2 duv2 = dFdy(tex_coords);
+
+    float f = 1.0f / (duv1.x * duv2.y - duv2.x * duv1.y);
+    vec3 T = normalize(f * (duv2.y * dp1 - duv1.y * dp2));
+    vec3 B = normalize(f * (duv2.x * dp1 - duv1.x * dp2));
+
+    float flip = 1.0;
+    if (dot(cross(T, B), normal) <= 0) flip = -1.0;
+    T = normalize(T - dot(T, normal) * normal);
+    B = cross(normal, T) * flip;
+
+    return mat3(T, B, normal);
+}
 
 vec3 fresnel_schlick(float cos_theta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cos_theta, 5.0);
@@ -122,7 +135,7 @@ float fr_disney_diffuse(float NdotV, float NdotL, float LdotH, float roughness) 
     return light_scatter * view_scatter * energy_factor;
 }
 
-vec3 calc_pbr_light(point_light_type light, vec3 V, vec3 N) {
+vec3 calc_pbr_light(point_light_type light, vec3 V, vec3 N, vec3 albedo, float metallic, float roughness) {
     vec3 L = normalize(light.pos - frag_pos);
     vec3 H = normalize(V + L);
 
@@ -154,16 +167,9 @@ vec3 calc_pbr_light(point_light_type light, vec3 V, vec3 N) {
     return (kD * diffuse + specular) * radiance * NdotL;
 }
 
-void main() {
-    vec3 N = normalize(frag_normal);
-    vec3 V = normalize(view_pos - frag_pos);
-
-    vec3 Lo = vec3(0.0);
-    for (int i = 0; i < POINT_LIGHT_COUNT; ++i) {
-        Lo += calc_pbr_light(point_lights[i], V, N);
-    }
-
+vec3 calc_ambient(vec3 V, vec3 N, vec3 albedo, float metallic, float roughness, float ao) {
     vec3 ambient = vec3(0.03) * albedo * ao;
+
     if (use_ibl) {
         vec3 F0 = mix(vec3(0.04), albedo, metallic);
         vec3 kS = fresnel_schlick_roughness(max(dot(N, V), 0.0), F0, (use_fsr ? roughness : 0.0));
@@ -181,6 +187,32 @@ void main() {
 
         ambient = (kD * diffuse + specular) * ao;
     }
+
+    return ambient;
+}
+
+void main() {
+    vec3 albedo = material.has_albedo_map ? texture(material.albedo_map, frag_tex_coords).rgb : material.albedo;
+    float metallic = material.has_metallic_map ? texture(material.metallic_map, frag_tex_coords).r : material.metallic;
+    float roughness = material.has_roughness_map ? texture(material.roughness_map, frag_tex_coords).r : material.roughness;
+    float ao = material.has_ao_map ? texture(material.ao_map, frag_tex_coords).r : material.ao;
+    vec3 normal = frag_normal;
+    if (material.has_normal_map) {
+        normal = texture(material.normal_map, frag_tex_coords).rgb;
+        normal = normalize(normal * 2.0 - 1.0);
+        mat3 tbn = cotangent_frame(normalize(frag_normal), frag_pos, frag_tex_coords);
+        normal = normalize(tbn * normal);
+    }
+
+    vec3 N = normalize(normal);
+    vec3 V = normalize(view_pos - frag_pos);
+
+    vec3 Lo = vec3(0.0);
+    for (int i = 0; i < POINT_LIGHT_COUNT; ++i) {
+        Lo += calc_pbr_light(point_lights[i], V, N, albedo, metallic, roughness);
+    }
+
+    vec3 ambient = calc_ambient(V, N, albedo, metallic, roughness, ao);
 
     vec3 color = ambient + Lo;
     color = color / (color + vec3(1.0));

@@ -35,7 +35,7 @@ glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
 static bool use_ibl = true;
 static bool use_fsr = true;
 static bool use_corr = true;
-static bool use_lamb = true;
+static bool use_lamb = false;
 
 struct sdl_window {
     SDL_Window * window;
@@ -209,15 +209,15 @@ void render_sphere() {
             data.push_back(positions[i].x);
             data.push_back(positions[i].y);
             data.push_back(positions[i].z);
-            if (uv.size() > 0) {
-                data.push_back(uv[i].x);
-                data.push_back(uv[i].y);
-            }
             if (normals.size() > 0) {
                 data.push_back(normals[i].x);
                 data.push_back(normals[i].y);
                 data.push_back(normals[i].z);
             }
+            if (uv.size() > 0) {
+                data.push_back(uv[i].x);
+                data.push_back(uv[i].y);
+        }
         }
 
         glBindVertexArray(sphere_vao);
@@ -229,9 +229,9 @@ void render_sphere() {
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride, (void*)(5 * sizeof(float)));
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
     }
 
     glBindVertexArray(sphere_vao);
@@ -253,6 +253,8 @@ int main(int argc, char * argv[]) {
     static const shader_program int_brdf{{GL_VERTEX_SHADER, "src/shaders/pbr/int_brdf.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/int_brdf.frag"}};
     static const shader_program sky{{GL_VERTEX_SHADER, "src/shaders/pbr/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/sky.frag"}};
     static const shader_program lamp{{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}};
+
+    static const model sphere_grass{"res/pbr/grass/sphere_grass.obj"};
 
     static const glm::vec3 sphere_color = glm::pow(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(2.2f));
     //static const glm::vec3 sphere_color = glm::pow(glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(2.2f));
@@ -431,6 +433,14 @@ int main(int argc, char * argv[]) {
             });
             program.set_uniform("model", model);
             render_sphere();
+        }
+
+        //program.set_uniforms("material.ao", 1.0f);
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3{ 3 * spacing, 0.0f, 10.0f });
+        program.set_uniform("model", model);
+        for (auto& mesh : sphere_grass.meshes) {
+            mesh.draw_pbr(program, materials[3], 3);
         }
 
         window.swap_buffer();
