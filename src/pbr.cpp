@@ -337,7 +337,7 @@ int main(int argc, char * argv[]) {
         pbr_material{"gold", "res/pbr"},
         pbr_material{"grass", "res/pbr"},
         pbr_material{"plastic", "res/pbr"},
-        pbr_material{"wall", "res/pbr"}
+        pbr_material{"sponza_bricks", "res/pbr"}
     };
 
     glViewport(0, 0, width, height);
