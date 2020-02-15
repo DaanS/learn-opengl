@@ -9,11 +9,17 @@ layout (location = 4) in vec3 bitangent;
 out vec3 frag_pos;
 out vec3 frag_normal;
 out vec2 frag_tex_coords;
-out mat3 tbn;
+out mat3 vert_tbn;
+out mat3 inv_vert_tbn;
+
+out vec3 tan_view_pos;
+out vec3 tan_frag_pos;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+
+uniform vec3 view_pos;
 
 void main() {
     gl_Position = projection * view * model * vec4(pos, 1.0);
@@ -30,5 +36,9 @@ void main() {
     t = normalize(t - dot(t, n) * n);
     b = cross(n, t) * flip;
 
-    tbn = mat3(t, b, n);
+    vert_tbn = mat3(t, b, n);
+    inv_vert_tbn = transpose(vert_tbn);
+
+    tan_view_pos = inv_vert_tbn * view_pos;
+    tan_frag_pos = inv_vert_tbn * frag_pos;
 }

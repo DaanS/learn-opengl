@@ -36,6 +36,7 @@ static bool use_ibl = true;
 static bool use_fsr = true;
 static bool use_corr = true;
 static bool use_lamb = false;
+static bool use_par = true;
 
 struct sdl_window {
     SDL_Window * window;
@@ -88,6 +89,7 @@ struct sdl_window {
                     switch (event.key.keysym.scancode) {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
                         case SDL_SCANCODE_I: use_ibl = !use_ibl; break;
+                        case SDL_SCANCODE_P: use_par = !use_par; break;
                         case SDL_SCANCODE_R: use_fsr = !use_fsr; break;
                         case SDL_SCANCODE_C: use_corr = !use_corr; break;
                         case SDL_SCANCODE_L: use_lamb = !use_lamb; break;
@@ -217,7 +219,7 @@ void render_sphere() {
             if (uv.size() > 0) {
                 data.push_back(uv[i].x);
                 data.push_back(uv[i].y);
-        }
+            }
         }
 
         glBindVertexArray(sphere_vao);
@@ -254,7 +256,9 @@ int main(int argc, char * argv[]) {
     static const shader_program sky{{GL_VERTEX_SHADER, "src/shaders/pbr/sky.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pbr/sky.frag"}};
     static const shader_program lamp{{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}};
 
-    static const model sphere_grass{"res/pbr/grass/sphere_grass.obj"};
+    static const model quad{"res/models/quad.obj"};
+    static const model cube{"res/models/cube.obj"};
+    static const model sphere{"res/models/sphere.obj"};
 
     static const glm::vec3 sphere_color = glm::pow(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(2.2f));
     //static const glm::vec3 sphere_color = glm::pow(glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(2.2f));
@@ -334,12 +338,14 @@ int main(int argc, char * argv[]) {
     int_brdf.set_uniform("use_corr", true);
     render_to_buffer(int_brdf, brdf_corr_lut_fb, {});
 
-    std::array<pbr_material, 5> materials{
+    std::array<pbr_material, 7> materials{
         pbr_material{"rusted_iron", "res/pbr"},
         pbr_material{"gold", "res/pbr"},
-        pbr_material{"grass", "res/pbr"},
+        pbr_material{"grass", "res/pbr", true},
         pbr_material{"plastic", "res/pbr"},
-        pbr_material{"sponza_bricks", "res/pbr"}
+        pbr_material{"wall", "res/pbr"},
+        pbr_material{"sponza_bricks", "res/pbr", true},
+        pbr_material{"red_bricks", "res/pbr", true}
     };
 
     glViewport(0, 0, width, height);
@@ -387,8 +393,8 @@ int main(int argc, char * argv[]) {
 
         program.use();
 
-        program.set_uniforms("projection", projection, "view", view, "view_pos", camera_pos);
-        program.set_uniforms("use_ibl", use_ibl, "use_fsr", use_fsr, "use_corr", use_corr, "use_lamb", use_lamb);
+        program.set_uniforms("projection", projection, "view", view, "view_pos", camera_pos, "use_vert_tbn", false);
+        program.set_uniforms("use_ibl", use_ibl, "use_fsr", use_fsr, "use_corr", use_corr, "use_lamb", use_lamb, "use_par", use_par);
         program.set_uniforms("material.albedo", sphere_color, "material.roughness", 40.0f, "material.ao", 1.0f);
         loft_conv.activate(program, "irradiance_map", 0);
         loft_spec.activate(program, "prefilter_map", 1);
@@ -427,7 +433,7 @@ int main(int argc, char * argv[]) {
             materials[mat_idx].activate(program, 3);
             model = glm::mat4(1.0f);
             model = glm::translate(model, glm::vec3{
-                (mat_idx - 2) * spacing,
+                (mat_idx - static_cast<int>(materials.size()) / 2) * spacing,
                 0.0f,
                 10.0f
             });
@@ -435,12 +441,25 @@ int main(int argc, char * argv[]) {
             render_sphere();
         }
 
-        //program.set_uniforms("material.ao", 1.0f);
+        program.set_uniforms("use_vert_tbn", true);
         model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3{ 3 * spacing, 0.0f, 10.0f });
-        program.set_uniform("model", model);
-        for (auto& mesh : sphere_grass.meshes) {
-            mesh.draw_pbr(program, materials[3], 3);
+
+        model = glm::translate(model, glm::vec3{ -2 * spacing, 0.0f, 20.0f });
+        program.set_uniforms("model", model);
+        for (auto& mesh : quad.meshes) {
+            mesh.draw_pbr(program, materials[5], 3);
+        }
+
+        model = glm::translate(model, glm::vec3{ spacing, 0.0f, 0.0f });
+        program.set_uniforms("model", model);
+        for (auto& mesh : cube.meshes) {
+            mesh.draw_pbr(program, materials[5], 3);
+        }
+
+        model = glm::translate(model, glm::vec3{ spacing, 0.0f, 0.0f });
+        program.set_uniforms("model", model);
+        for (auto& mesh : sphere.meshes) {
+            mesh.draw_pbr(program, materials[5], 3);
         }
 
         window.swap_buffer();
