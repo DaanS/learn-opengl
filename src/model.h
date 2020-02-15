@@ -58,15 +58,17 @@ struct pbr_material {
     std::shared_ptr<texture> roughness{nullptr};
     std::shared_ptr<texture> ao{nullptr};
     std::shared_ptr<texture> normal{nullptr};
+    std::shared_ptr<texture> height{nullptr};
 
     static std::unordered_map<std::string, std::shared_ptr<texture>> loaded_textures;
 
-    pbr_material(std::string name, std::string tex_path_base) : name{name} {
+    pbr_material(std::string name, std::string tex_path_base, bool has_height = false) : name{name} {
         albedo = load_texture(name, tex_path_base, "albedo");
         metallic = load_texture(name, tex_path_base, "metallic");
         roughness = load_texture(name, tex_path_base, "roughness");
         ao = load_texture(name, tex_path_base, "ao");
         normal = load_texture(name, tex_path_base, "normal");
+        if (has_height) height = load_texture(name, tex_path_base, "height");
     }
 
     pbr_material(std::string name, glm::vec3 albedo, float metallic, float roughness, float ao)
@@ -100,6 +102,7 @@ struct pbr_material {
         activate_map("roughness", roughness, start_unit + 2, program);
         activate_map("ao", ao, start_unit + 3, program);
         activate_map("normal", normal, start_unit + 4, program);
+        activate_map("height", height, start_unit + 5, program);
     }
 };
 

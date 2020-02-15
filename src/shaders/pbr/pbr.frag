@@ -19,17 +19,24 @@ struct material_type {
     bool has_roughness_map;
     bool has_ao_map;
     bool has_normal_map;
+    bool has_height_map;
 
     sampler2D albedo_map;
     sampler2D metallic_map;
     sampler2D roughness_map;
     sampler2D ao_map;
     sampler2D normal_map;
+    sampler2D height_map;
 };
 
 in vec3 frag_pos;
 in vec3 frag_normal;
 in vec2 frag_tex_coords;
+in mat3 vert_tbn;
+in mat3 inv_vert_tbn;
+
+in vec3 tan_view_pos;
+in vec3 tan_frag_pos;
 
 out vec4 frag_color;
 
@@ -45,6 +52,39 @@ uniform bool use_ibl;
 uniform bool use_fsr;
 uniform bool use_corr;
 uniform bool use_lamb;
+uniform bool use_par;
+uniform bool use_vert_tbn;
+
+vec2 parallax_mapping(vec2 tex_coords, vec3 view_dir) {
+    if (!material.has_height_map || !use_par) return tex_coords;
+
+    const float depth_scale = 0.1;
+    const float layer_count = 10;
+    float layer_depth = 1.0 / layer_count;
+    float cur_layer_depth = 0.0;
+
+    view_dir.y = -view_dir.y; // XXX why?
+    vec2 P = view_dir.xy * depth_scale;
+    vec2 delta_tex_coords = P / layer_count;
+
+    vec2 cur_tex_coords = tex_coords;
+    float cur_depth = 1.0 - texture(material.height_map, cur_tex_coords).r;
+
+    while (cur_layer_depth < cur_depth) {
+        cur_tex_coords -= delta_tex_coords;
+        cur_depth = 1.0 - texture(material.height_map, cur_tex_coords).r;
+        cur_layer_depth += layer_depth;
+    }
+
+    vec2 prev_tex_coords = cur_tex_coords + delta_tex_coords;
+    float after_depth = cur_depth - cur_layer_depth;
+    float before_depth = 1.0 - texture(material.height_map, prev_tex_coords).r - cur_layer_depth + layer_depth;
+
+    float weight = after_depth / (after_depth - before_depth);
+    vec2 final_tex_coords = prev_tex_coords * weight + cur_tex_coords * (1.0 - weight);
+
+    return final_tex_coords;
+}
 
 mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 tex_coords) {
     vec3 dp1 = dFdx(pos);
@@ -192,15 +232,19 @@ vec3 calc_ambient(vec3 V, vec3 N, vec3 albedo, float metallic, float roughness, 
 }
 
 void main() {
-    vec3 albedo = material.has_albedo_map ? texture(material.albedo_map, frag_tex_coords).rgb : material.albedo;
-    float metallic = material.has_metallic_map ? texture(material.metallic_map, frag_tex_coords).r : material.metallic;
-    float roughness = material.has_roughness_map ? texture(material.roughness_map, frag_tex_coords).r : material.roughness;
-    float ao = material.has_ao_map ? texture(material.ao_map, frag_tex_coords).r : material.ao;
+    mat3 tbn = cotangent_frame(normalize(frag_normal), frag_pos, frag_tex_coords); 
+    mat3 inv_tbn = inverse(tbn);
+    if (use_vert_tbn) inv_tbn = inv_vert_tbn;
+    vec2 tex_coords = parallax_mapping(frag_tex_coords, normalize(inv_tbn * normalize(view_pos - frag_pos)));
+
+    vec3 albedo = material.has_albedo_map ? texture(material.albedo_map, tex_coords).rgb : material.albedo;
+    float metallic = material.has_metallic_map ? texture(material.metallic_map, tex_coords).r : material.metallic;
+    float roughness = material.has_roughness_map ? texture(material.roughness_map, tex_coords).r : material.roughness;
+    float ao = material.has_ao_map ? texture(material.ao_map, tex_coords).r : material.ao;
     vec3 normal = frag_normal;
     if (material.has_normal_map) {
-        normal = texture(material.normal_map, frag_tex_coords).rgb;
+        normal = texture(material.normal_map, tex_coords).rgb;
         normal = normalize(normal * 2.0 - 1.0);
-        mat3 tbn = cotangent_frame(normalize(frag_normal), frag_pos, frag_tex_coords);
         normal = normalize(tbn * normal);
     }
 
