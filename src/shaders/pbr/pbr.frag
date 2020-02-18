@@ -49,8 +49,6 @@ uniform samplerCube prefilter_map;
 uniform sampler2D brdf_lut;
 
 uniform bool use_ibl;
-uniform bool use_fsr;
-uniform bool use_corr;
 uniform bool use_lamb;
 uniform bool use_par;
 uniform bool use_vert_tbn;
@@ -59,7 +57,7 @@ vec2 parallax_mapping(vec2 tex_coords, vec3 view_dir) {
     if (!material.has_height_map || !use_par) return tex_coords;
 
     const float depth_scale = 0.1;
-    const float layer_count = 10;
+    const float layer_count = 30;
     float layer_depth = 1.0 / layer_count;
     float cur_layer_depth = 0.0;
 
@@ -84,6 +82,32 @@ vec2 parallax_mapping(vec2 tex_coords, vec3 view_dir) {
     vec2 final_tex_coords = prev_tex_coords * weight + cur_tex_coords * (1.0 - weight);
 
     return final_tex_coords;
+}
+
+float parallax_shadow(vec2 tex_coords, vec3 light_dir) {
+    if (!material.has_height_map || !use_par) return 1.0;
+
+    float shadow = 0.0;
+
+    const float depth_scale = 0.1;
+    const float layer_count = 30;
+    float cur_layer_depth = 1.0 - texture(material.height_map, tex_coords).r;
+    float layer_height = cur_layer_depth / layer_count;
+    vec2 delta_tex_coords = light_dir.xy * depth_scale / layer_count;
+    vec2 cur_tex_coords = tex_coords;
+
+    while (cur_layer_depth > 0.0) {
+        cur_layer_depth -= layer_height;
+        cur_tex_coords += delta_tex_coords;
+        float cur_depth = 1.0 - texture(material.height_map, cur_tex_coords).r;
+
+        if (cur_depth < cur_layer_depth) {
+            float cur_shadow = (cur_layer_depth - cur_depth) * ((cur_layer_depth / layer_height) / layer_count);
+            shadow = max(shadow, cur_shadow);
+        }
+    }
+
+    return 1.0 - shadow;
 }
 
 mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 tex_coords) {
@@ -130,23 +154,6 @@ float distribution_ggx(vec3 N, vec3 H, float roughness) {
     return num / denom;
 }
 
-float geometry_schlick_ggx(float NdotV, float roughness) {
-    float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
-
-    float num = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-
-    return num / denom;
-}
-
-float geometry_smith(float NdotV, float NdotL, float roughness) {
-    float ggx2 = geometry_schlick_ggx(NdotV, roughness);
-    float ggx1 = geometry_schlick_ggx(NdotL, roughness);
-
-    return ggx1 * ggx2;
-}
-
 float geometry_smith_correlated(float NdotV, float NdotL, float roughness) {
     float a2 = roughness * roughness;
     float NdotV2 = NdotV * NdotV;
@@ -191,11 +198,9 @@ vec3 calc_pbr_light(point_light_type light, vec3 V, vec3 N, vec3 albedo, float m
     float NdotV = max(dot(N, V), 0.00001);
 
     float D = distribution_ggx(N, H, roughness);
-    float G = use_corr ? geometry_smith_correlated(NdotL, NdotV, roughness) : geometry_smith(NdotL, NdotV, roughness);
+    float G = geometry_smith_correlated(NdotL, NdotV, roughness);
 
-    vec3 num = D * G * F;
-    float denom = use_corr ? 1 : 4.0 * NdotV * NdotL;
-    vec3 specular = num / max(denom, 0.001);
+    vec3 specular = D * G * F;
 
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
@@ -212,7 +217,7 @@ vec3 calc_ambient(vec3 V, vec3 N, vec3 albedo, float metallic, float roughness, 
 
     if (use_ibl) {
         vec3 F0 = mix(vec3(0.04), albedo, metallic);
-        vec3 kS = fresnel_schlick_roughness(max(dot(N, V), 0.0), F0, (use_fsr ? roughness : 0.0));
+        vec3 kS = fresnel_schlick_roughness(max(dot(N, V), 0.0), F0, roughness);
         vec3 kD = 1.0 - kS;
         kD *= 1.0 - metallic;
 
@@ -253,7 +258,9 @@ void main() {
 
     vec3 Lo = vec3(0.0);
     for (int i = 0; i < POINT_LIGHT_COUNT; ++i) {
-        Lo += calc_pbr_light(point_lights[i], V, N, albedo, metallic, roughness);
+        vec3 Lp = calc_pbr_light(point_lights[i], V, N, albedo, metallic, roughness);
+        float shadow = parallax_shadow(tex_coords, normalize(inv_tbn * normalize(point_lights[i].pos - frag_pos)));
+        Lo += Lp * shadow;
     }
 
     vec3 ambient = calc_ambient(V, N, albedo, metallic, roughness, ao);

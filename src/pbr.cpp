@@ -33,8 +33,6 @@ float fov = 45.0f;
 glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
 
 static bool use_ibl = true;
-static bool use_fsr = true;
-static bool use_corr = true;
 static bool use_lamb = false;
 static bool use_par = true;
 
@@ -90,8 +88,6 @@ struct sdl_window {
                         case SDL_SCANCODE_ESCAPE: running = false; break;
                         case SDL_SCANCODE_I: use_ibl = !use_ibl; break;
                         case SDL_SCANCODE_P: use_par = !use_par; break;
-                        case SDL_SCANCODE_R: use_fsr = !use_fsr; break;
-                        case SDL_SCANCODE_C: use_corr = !use_corr; break;
                         case SDL_SCANCODE_L: use_lamb = !use_lamb; break;
                         default: break;
                     }
@@ -284,7 +280,6 @@ int main(int argc, char * argv[]) {
     cubemap sky_map{{"res/skybox/right.jpg", "res/skybox/left.jpg", "res/skybox/top.jpg", "res/skybox/bottom.jpg", "res/skybox/front.jpg", "res/skybox/back.jpg"}};
 
     framebuffer brdf_lut_fb{512, 512};
-    framebuffer brdf_corr_lut_fb{512, 512};
 
     GLuint vp_ubo;
     glGenBuffers(1, &vp_ubo);
@@ -333,10 +328,7 @@ int main(int argc, char * argv[]) {
     loft_spec.render(glm::vec3(0.0f), vp_ubo, [&](glm::vec3 pos, float roughness) { spec_render_func(spec_conv, pos, roughness); });
 
     int_brdf.use();
-    int_brdf.set_uniform("use_corr", false);
     render_to_buffer(int_brdf, brdf_lut_fb, {});
-    int_brdf.set_uniform("use_corr", true);
-    render_to_buffer(int_brdf, brdf_corr_lut_fb, {});
 
     std::array<pbr_material, 7> materials{
         pbr_material{"rusted_iron", "res/pbr"},
@@ -394,11 +386,11 @@ int main(int argc, char * argv[]) {
         program.use();
 
         program.set_uniforms("projection", projection, "view", view, "view_pos", camera_pos, "use_vert_tbn", false);
-        program.set_uniforms("use_ibl", use_ibl, "use_fsr", use_fsr, "use_corr", use_corr, "use_lamb", use_lamb, "use_par", use_par);
+        program.set_uniforms("use_ibl", use_ibl, "use_lamb", use_lamb, "use_par", use_par);
         program.set_uniforms("material.albedo", sphere_color, "material.roughness", 40.0f, "material.ao", 1.0f);
         loft_conv.activate(program, "irradiance_map", 0);
         loft_spec.activate(program, "prefilter_map", 1);
-        (use_corr ? brdf_corr_lut_fb : brdf_lut_fb).activate_texture(program, "brdf_lut", 2);
+        brdf_lut_fb.activate_texture(program, "brdf_lut", 2);
         for (size_t i = 0; i < 4; ++i) {
             program.set_uniforms("point_lights[" + std::to_string(i) + "].pos", light_positions[i],
                                  "point_lights[" + std::to_string(i) + "].color", light_colors[i]);
@@ -447,7 +439,7 @@ int main(int argc, char * argv[]) {
         model = glm::translate(model, glm::vec3{ -2 * spacing, 0.0f, 20.0f });
         program.set_uniforms("model", model);
         for (auto& mesh : quad.meshes) {
-            mesh.draw_pbr(program, materials[5], 3);
+            mesh.draw_pbr(program, materials[6], 3);
         }
 
         model = glm::translate(model, glm::vec3{ spacing, 0.0f, 0.0f });
