@@ -143,7 +143,7 @@ struct sdl_window {
     }
 };
 
-int main(int argc, char * argv[]) {
+int main(int, char * []) {
     sdl_window window(width, height, "LearnOpenGL");
 
     if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {

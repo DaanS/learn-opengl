@@ -39,6 +39,14 @@ layout (location = 3) out vec3 specular;
 layout (location = 4) out vec3 emissive;
 layout (location = 5) out vec3 misc; // r = gloss;
 
+// TODO possible PBR layout
+// 0 pos
+// 1 normal
+// 2 albedo
+// 3 emissive
+// 4 ao roughness metallic
+// 5 height
+
 uniform material_type material;
 
 uniform bool use_frag_tbn;
