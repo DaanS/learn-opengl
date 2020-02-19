@@ -236,7 +236,7 @@ void render_sphere() {
     glDrawElements(GL_TRIANGLE_STRIP, index_count, GL_UNSIGNED_INT, 0);
 }
 
-int main(int argc, char * argv[]) {
+int main(int, char * []) {
     sdl_window window(width, height, "LearnOpenGL");
 
     if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {

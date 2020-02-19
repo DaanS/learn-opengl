@@ -353,7 +353,7 @@ void environment::render_maps(shader_program const& program, GLuint vp_ubo, std:
     glViewport(0, 0, width, height);
 }
 
-int main(int argc, char * argv[]) {
+int main(int, char * []) {
     sdl_window window(width, height, "LearnOpenGL");
 
     if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {
@@ -376,7 +376,6 @@ int main(int argc, char * argv[]) {
     static const shader_program ssao({{GL_VERTEX_SHADER, "src/shaders/ssao.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/ssao.frag"}});
     static const shader_program blur({{GL_VERTEX_SHADER, "src/shaders/blur.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blur.frag"}});
     static const shader_program blend({{GL_VERTEX_SHADER, "src/shaders/blend.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blend.frag"}});
-    static const shader_program view_deb({{GL_VERTEX_SHADER, "src/shaders/view_deb.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/view_deb.frag"}});
 
     model sponza{"res/sponza/sponza.obj"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
