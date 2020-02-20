@@ -182,4 +182,38 @@ struct hdr {
     }
 };
 
+struct tex_params {
+    std::string path;
+    bool filter; // TODO remove support?
+    bool srgb;
+
+    bool operator==(tex_params const& other) const {
+        return (path == other.path && filter == other.filter && srgb == other.srgb);
+    }
+};
+
+template<typename TexType>
+struct loader {
+
+    static inline std::unordered_map<tex_params, std::shared_ptr<TexType>> loaded_textures;
+
+    static std::shared_ptr<TexType> load(std::string path, bool srgb) {
+        tex_params params{path, true, srgb};
+        auto found = loaded_textures.find(params);
+        if (found == loaded_textures.end()) {
+            found = loaded_textures.emplace(std::pair(params, std::make_shared<texture>(path, true, srgb))).first;
+        }
+        return found->second;
+    }
+};
+
+namespace std {
+    template<>
+    struct hash<tex_params> {
+        size_t operator()(tex_params const& params) const noexcept {
+            return hash_values(params.path, params.filter, params.srgb);
+        }
+    };
+}
+
 #endif

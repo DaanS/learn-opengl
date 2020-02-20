@@ -77,14 +77,7 @@ struct pbr_material {
     static std::shared_ptr<texture> load_texture(std::string name, std::string tex_path_base, std::string type) {
         std::string path = tex_path_base + "/" + name + "/" + type + ".png";
 
-        auto found{loaded_textures.find(path)};
-        if (found != loaded_textures.end()) {
-            return found->second;
-        } else {
-            auto tex = std::make_shared<texture>(path, true, type == "albedo");
-            loaded_textures.emplace(std::pair(path, tex));
-            return tex;
-        }
+        return loader<texture>::load(path, type == "albedo");
     }
 
     void activate_map(std::string name, std::shared_ptr<texture> map, int unit, shader_program const& program) const {
@@ -162,14 +155,7 @@ struct material {
         std::string tex_path{tex_path_base + path.C_Str()};
         std::replace(tex_path.begin(), tex_path.end(), '\\', '/');
 
-        auto found{loaded_textures.find(tex_path)};
-        if (found != loaded_textures.end()) {
-            return found->second;
-        } else {
-            auto tex = std::make_shared<texture>(tex_path, true, ai_type == aiTextureType_DIFFUSE);
-            loaded_textures.emplace(std::pair{tex_path, tex});
-            return tex;
-        }
+        return loader<texture>::load(tex_path, ai_type == aiTextureType_DIFFUSE);
     }
 };
 
