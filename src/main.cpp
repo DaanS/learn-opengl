@@ -45,6 +45,27 @@ static const float gamma_strength{2.2f};
 static float point_falloff = 0.0015f;
 static float const point_falloff_delta = 0.0001f;
 
+std::string severity_str(GLenum severity) {
+    switch (severity) {
+        case GL_DEBUG_SEVERITY_HIGH: return "HIGH";
+        case GL_DEBUG_SEVERITY_MEDIUM: return "MEDIUM";
+        case GL_DEBUG_SEVERITY_LOW: return "LOW";
+        case GL_DEBUG_SEVERITY_NOTIFICATION: return "INFO";
+        default: return "UNKNOWN";
+    }
+    return "";
+}
+
+void APIENTRY opengl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei, const GLchar * message, const void *) {
+    if (id == 131185) return;
+
+    std::cout << "opengl_debug_callback:" << std::endl;
+
+    std::cout << "id = " << id << ", source = " << source << ", type = " << type << ", severity = " << severity_str(severity) << std::endl;
+    std::cout << message << std::endl;
+    std::cout << std::endl;
+}
+
 struct sdl_window {
     SDL_Window * window;
     SDL_GLContext context;
@@ -63,12 +84,16 @@ struct sdl_window {
             std::exit(1);
         }
 
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+
+        int context_flags{0};
+        SDL_GL_GetAttribute(SDL_GL_CONTEXT_FLAGS, &context_flags);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, context_flags | SDL_GL_CONTEXT_DEBUG_FLAG);
 
         context = SDL_GL_CreateContext(window);
 
@@ -361,11 +386,26 @@ int main(int, char * []) {
         return -1;
     }
 
-    shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
-    shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
-    shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
-    shader_program pre_post({{GL_VERTEX_SHADER, "src/shaders/pre_post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pre_post.frag"}});
-    shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
+    glDebugMessageCallback(opengl_debug_callback, nullptr);
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+
+    glEnable(GL_STENCIL_TEST);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_MULTISAMPLE);
+
+    static const shader_program program({{GL_VERTEX_SHADER, "src/shaders/main.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/main.frag"}});
+    static const shader_program lamp({{GL_VERTEX_SHADER, "src/shaders/lamp.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/lamp.frag"}});
+    static const shader_program post({{GL_VERTEX_SHADER, "src/shaders/post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/post.frag"}});
+    static const shader_program pre_post({{GL_VERTEX_SHADER, "src/shaders/pre_post.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/pre_post.frag"}});
+    static const shader_program reflect({{GL_VERTEX_SHADER, "src/shaders/reflect.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/reflect.frag"}});
 
     static const shader_program depth({{GL_VERTEX_SHADER, "src/shaders/depth.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/depth.frag"}});
     static const shader_program depth_cube({{GL_VERTEX_SHADER, "src/shaders/depth_cube.vert"}, {GL_GEOMETRY_SHADER, "src/shaders/depth_cube.geom"}, {GL_FRAGMENT_SHADER, "src/shaders/depth_cube.frag"}});
@@ -382,20 +422,6 @@ int main(int, char * []) {
 
     cubemap sky_map{{"res/skybox/right.jpg", "res/skybox/left.jpg", "res/skybox/top.jpg", "res/skybox/bottom.jpg", "res/skybox/front.jpg", "res/skybox/back.jpg"}};
     cubemap star_map{{"res/starbox/right.png", "res/starbox/left.png", "res/starbox/top.png", "res/starbox/bottom.png", "res/starbox/front.png", "res/starbox/back.png"}};
-
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
-
-    glEnable(GL_STENCIL_TEST);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-    glStencilFunc(GL_ALWAYS, 1, 0xFF);
-
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glEnable(GL_CULL_FACE);
-
-    glEnable(GL_MULTISAMPLE);
 
     vao post_vao(post_vertices, 4, {{2, 0}, {2, 2}});
     vao cube_vao(vertices, 8, {{3, 0}, {3, 3}});
@@ -557,9 +583,9 @@ int main(int, char * []) {
         // draw room (g-pass)
         glViewport(0, 0, width, height);
         glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         g_pass.use();
         g_pass.set_uniforms("model", model, "use_frag_tbn", use_frag_tbn);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDisable(GL_BLEND);
         sponza.draw(g_pass);
         glEnable(GL_BLEND);
@@ -573,7 +599,7 @@ int main(int, char * []) {
             ssao.set_uniform("g_bufs[" + std::to_string(i) + "]", static_cast<int>(i));
         }
         ssao_textures.push_back(noise_tex);
-        ssao.set_uniforms("noise", g_color_bufs.size());
+        ssao.set_uniforms("noise", static_cast<int>(g_color_bufs.size()));
         for (size_t i = 0; i < ssao_samples; ++i) {
             ssao.set_uniform("samples[" + std::to_string(i) + "]", ssao_kernel[i]);
         }
@@ -694,8 +720,6 @@ int main(int, char * []) {
         post.set_uniforms("width", static_cast<float>(width), "height", static_cast<float>(height), "gamma", gamma_strength, "exposure", 1.0f);
         post.set_uniforms("user_ev", env.ev, "tex", 0, "bloom", 1, "use_bloom", use_bloom, "DEBUG", false);
         render_to_buffer(post, 0, width, height, {pp_fb.color_buf, blend_fbs[0].color_buf});
-        //post.set_uniforms("user_ev", env.ev, "tex", 0, "bloom", 1, "use_bloom", use_bloom, "DEBUG", true);
-        //render_to_buffer(post, 0, width, height, {g_color_bufs[3], blend_fbs[0].color_buf});
 
         window.swap_buffer();
 
