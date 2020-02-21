@@ -60,8 +60,6 @@ struct pbr_material {
     std::shared_ptr<texture> normal{nullptr};
     std::shared_ptr<texture> height{nullptr};
 
-    static std::unordered_map<std::string, std::shared_ptr<texture>> loaded_textures;
-
     pbr_material(std::string name, std::string tex_path_base, bool has_height = false) : name{name} {
         albedo = load_texture(name, tex_path_base, "albedo");
         metallic = load_texture(name, tex_path_base, "metallic");
@@ -77,7 +75,7 @@ struct pbr_material {
     static std::shared_ptr<texture> load_texture(std::string name, std::string tex_path_base, std::string type) {
         std::string path = tex_path_base + "/" + name + "/" + type + ".png";
 
-        return loader<texture>::load(path, type == "albedo");
+        return loader<texture>::load(path, true, type == "albedo");
     }
 
     void activate_map(std::string name, std::shared_ptr<texture> map, int unit, shader_program const& program) const {
@@ -99,8 +97,6 @@ struct pbr_material {
     }
 };
 
-inline std::unordered_map<std::string, std::shared_ptr<texture>> pbr_material::loaded_textures;
-
 struct material {
     std::string name;
 
@@ -120,8 +116,6 @@ struct material {
     std::shared_ptr<texture> bump;
     std::shared_ptr<texture> normal;
     std::shared_ptr<texture> opacity;
-
-    static std::unordered_map<std::string, std::shared_ptr<texture>> loaded_textures;
 
     material(aiMaterial const * ai_material, std::string tex_path_base) {
         name = ai_get<aiString, std::string>(ai_material, AI_MATKEY_NAME);
@@ -152,26 +146,26 @@ struct material {
 
         aiString path;
         ai_material->GetTexture(ai_type, 0, &path);
-        std::string tex_path{tex_path_base + path.C_Str()};
+
+        std::string tex_path{path.C_Str()};
+        if (tex_path[0] != '\\' && tex_path[0] != '/') tex_path = tex_path_base + tex_path;
         std::replace(tex_path.begin(), tex_path.end(), '\\', '/');
 
-        return loader<texture>::load(tex_path, ai_type == aiTextureType_DIFFUSE);
+        return loader<texture>::load(tex_path, true, ai_type == aiTextureType_DIFFUSE);
     }
 };
-
-inline std::unordered_map<std::string, std::shared_ptr<texture>> material::loaded_textures;
 
 struct mesh {
     std::vector<vertex> vertices;
     std::vector<GLuint> indices;
-    material mat;
+    std::shared_ptr<material> mat;
 
     GLuint vao;
     GLuint vbo;
     GLuint ebo;
 
     // TODO figure out ownership semantics for members
-    mesh(std::vector<vertex> && vertices, std::vector<GLuint> && indices, material mat)
+    mesh(std::vector<vertex> && vertices, std::vector<GLuint> && indices, std::shared_ptr<material> mat)
         : vertices{std::move(vertices)}, indices{std::move(indices)}, mat{mat}
     {
         setup_gl_data();
@@ -219,16 +213,16 @@ struct mesh {
 
     void draw(shader_program const & program) const {
         program.use();
-        program.set_uniform("material.color_diffuse", mat.color_diffuse);
-        program.set_uniform("material.color_specular", mat.color_specular);
-        program.set_uniform("material.shininess", mat.shininess);
+        program.set_uniform("material.color_diffuse", mat->color_diffuse);
+        program.set_uniform("material.color_specular", mat->color_specular);
+        program.set_uniform("material.shininess", mat->shininess);
 
-        activate_map("diffuse", mat.diffuse, 0, program);
-        activate_map("specular", mat.specular, 1, program);
-        activate_map("emissive", mat.emissive, 2, program);
-        activate_map("bump", mat.bump, 3, program);
-        activate_map("normal", mat.normal, 4, program);
-        activate_map("opacity", mat.opacity, 5, program);
+        activate_map("diffuse", mat->diffuse, 0, program);
+        activate_map("specular", mat->specular, 1, program);
+        activate_map("emissive", mat->emissive, 2, program);
+        activate_map("bump", mat->bump, 3, program);
+        activate_map("normal", mat->normal, 4, program);
+        activate_map("opacity", mat->opacity, 5, program);
 
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
@@ -252,7 +246,8 @@ struct mesh {
 struct model {
     std::vector<mesh> meshes;
     std::string directory;
-    std::unordered_map<std::string, texture> loaded_textures;
+
+    using material_loader = shared_cache<material, aiMaterial const *, std::string>;
 
     model(char const * path) {
         load_model(path);
@@ -322,7 +317,7 @@ struct model {
             ai_material = scene->mMaterials[0];
         }
 
-        mesh m{std::move(vertices), std::move(indices), material{ai_material, directory}};
+        mesh m{std::move(vertices), std::move(indices), material_loader::load(ai_material, directory)};
         return m;
     }
 

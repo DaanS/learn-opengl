@@ -18,8 +18,6 @@ out mat3 tbn;
 
 uniform mat4 model;
 
-out vec3 deb;
-
 void main() {
     gl_Position = projection * view * model * vec4(pos, 1.0);
     frag_pos = vec3(model * vec4(pos, 1.0));
