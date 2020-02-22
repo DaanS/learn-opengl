@@ -138,15 +138,23 @@ struct material {
         opacity = load_texture(ai_material, aiTextureType_OPACITY, tex_path_base);
     }
 
-    static std::shared_ptr<texture> load_texture(aiMaterial const * ai_material, aiTextureType ai_type, std::string tex_path_base) {
+    std::shared_ptr<texture> load_texture(aiMaterial const * ai_material, aiTextureType ai_type, std::string tex_path_base) {
         size_t count = ai_material->GetTextureCount(ai_type);
 
         if (count == 0) return nullptr;
-        if (count > 1) std::cout << "WARNING: mesh specifies " << count << " textures of type " << ai_type << " but we only support 1" << std::endl;
+        if (count > 1) {
+            std::cout << "WARNING: material " << name << " specifies " << count << " textures of type " << ai_type << " but we only support 1" << std::endl;
+            for (size_t i = 0; i < count; ++i) {
+                aiString path;
+                ai_material->GetTexture(ai_type, 0, &path);
+                std::cout << i << ": " << path.C_Str() << std::endl;
+            }
+        }
 
         aiString path;
         ai_material->GetTexture(ai_type, 0, &path);
 
+        // TODO handle filesystem stuff in a less rubbishy way
         std::string tex_path{path.C_Str()};
         if (tex_path[0] != '\\' && tex_path[0] != '/') tex_path = tex_path_base + tex_path;
         std::replace(tex_path.begin(), tex_path.end(), '\\', '/');

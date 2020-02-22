@@ -32,16 +32,20 @@ if (WIN32)
 endif ()
 find_package(GLM REQUIRED)
 find_package(SDL2 REQUIRED)
-find_package(ASSIMP REQUIRED)
+find_package(ASSIMP 5.0 REQUIRED PATHS "$ENV{HOME}/apps/assimp")
 find_package(OpenGL REQUIRED)
 
 include_directories("${SDL2_INCLUDE_DIRS}")
+include_directories("${ASSIMP_INCLUDE_DIRS}")
 include_directories("${CMAKE_SOURCE_DIR}/include")
 include_directories("${CMAKE_SOURCE_DIR}/src")
+
+link_directories("${ASSIMP_LIBRARY_DIRS}")
 
 if (UNIX)
     add_compile_options(-Wall -Wextra -Werror -pedantic)
 endif ()
+
 add_library(GLAD
     src/glad.c
 )

@@ -417,7 +417,8 @@ int main(int, char * []) {
     static const shader_program blur({{GL_VERTEX_SHADER, "src/shaders/blur.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blur.frag"}});
     static const shader_program blend({{GL_VERTEX_SHADER, "src/shaders/blend.vert"}, {GL_FRAGMENT_SHADER, "src/shaders/blend.frag"}});
 
-    model sponza{"res/sponza/sponza.obj"};
+    //model sponza{"res/sponza/sponza.obj"};
+    model sponza{"res/sponza_gltf/sponza.gltf"};
     model nanosuit{"res/nanosuit/nanosuit.obj"};
 
     cubemap sky_map{{"res/skybox/right.jpg", "res/skybox/left.jpg", "res/skybox/top.jpg", "res/skybox/bottom.jpg", "res/skybox/front.jpg", "res/skybox/back.jpg"}};
@@ -562,7 +563,7 @@ int main(int, char * []) {
         // prepare room
         model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(0.0f, -1.75f, 0.0f));
-        model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
+        //model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
 
         program.use();
         program.set_uniforms("use_spotlight", use_spotlight, "far", far, "light_space", light_space, "view_pos", camera_pos, "model", model);

@@ -193,7 +193,7 @@ void main() {
         if (tex_color.r < 0.1) discard;
     } else {
         vec4 tex_color = texture(material.diffuse, frag_tex_coords);
-        //if (tex_color.a < 0.1) discard;
+        if (tex_color.a < 0.1) discard;
     }
 
     vec3 result = calc_dir_light(dir_light);

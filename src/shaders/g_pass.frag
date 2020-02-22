@@ -74,6 +74,9 @@ void main() {
     if (material.has_opacity_map) {
         vec4 tex_color = texture(material.opacity, frag_tex_coords);
         if (tex_color.r < 0.1) discard;
+    } else {
+        vec4 tex_color = texture(material.diffuse, frag_tex_coords);
+        if (tex_color.a < 0.1) discard;
     }
 
     pos = frag_pos;

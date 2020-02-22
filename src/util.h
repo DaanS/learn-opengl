@@ -41,7 +41,7 @@ size_t hash_values(Ts... ts) {
 // std::hash for std::tuple
 namespace std {
     template<typename... Ts>
-    struct std::hash<std::tuple<Ts...>> {
+    struct hash<std::tuple<Ts...>> {
         size_t operator()(std::tuple<Ts...> tup) const noexcept {
             return std::apply(hash_values<Ts...>, tup);
         }
